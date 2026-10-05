@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import { mkdirSync, rmSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { join, resolve, sep } from 'node:path';
+import { projectAliasPlugin } from './fixture-build';
 
 test('Admin user directory: more than 1000 users, literal search, bounded pagination and access control', async () => {
   const root = resolve('.tmp'),
@@ -16,6 +17,7 @@ test('Admin user directory: more than 1000 users, literal search, bounded pagina
       target: 'node',
       format: 'esm',
       external: ['nodemailer', 'lunar-javascript'],
+      plugins: [projectAliasPlugin],
     });
     if (!built.success) throw new Error(built.logs.map((log) => log.message).join('\n'));
     const child = Bun.spawn(['node', join(folder, 'admin-users.mjs')], {

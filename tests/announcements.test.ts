@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import { mkdirSync, rmSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { join, resolve, sep } from 'node:path';
+import { projectAliasPlugin } from './fixture-build';
 
 test('Announcements: permissions, draft visibility, per-user versioned reads and conflicting updates', async () => {
   const root = resolve('.tmp');
@@ -16,6 +17,7 @@ test('Announcements: permissions, draft visibility, per-user versioned reads and
       target: 'node',
       format: 'esm',
       external: ['nodemailer', 'lunar-javascript'],
+      plugins: [projectAliasPlugin],
     });
     if (!build.success) throw new Error(build.logs.map((log) => log.message).join('\n'));
     const child = Bun.spawn(['node', join(folder, 'announcements.mjs')], {

@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import { mkdirSync, rmSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { join, resolve, sep } from 'node:path';
+import { projectAliasPlugin } from './fixture-build';
 
 test('Node 24 backend integration: bootstrap, permissions, memory, encrypted providers and atomic SSE turns', async () => {
   const root = resolve('.tmp');
@@ -16,6 +17,7 @@ test('Node 24 backend integration: bootstrap, permissions, memory, encrypted pro
       target: 'node',
       format: 'esm',
       external: ['nodemailer', 'lunar-javascript'],
+      plugins: [projectAliasPlugin],
     });
     if (!built.success) throw new Error(built.logs.map((log) => log.message).join('\n'));
     const process = Bun.spawn(['node', 'scripts/backend-smoke.mjs', join(folder, 'route.mjs')], {

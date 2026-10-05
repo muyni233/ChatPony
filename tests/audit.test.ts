@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import { mkdirSync, rmSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { join, resolve, sep } from 'node:path';
+import { projectAliasPlugin } from './fixture-build';
 
 test('Node 24 audit metadata and statistics use an isolated SQLite database', async () => {
   const root = resolve('.tmp');
@@ -16,6 +17,7 @@ test('Node 24 audit metadata and statistics use an isolated SQLite database', as
       target: 'node',
       format: 'esm',
       external: ['nodemailer', 'lunar-javascript'],
+      plugins: [projectAliasPlugin],
     });
     if (!built.success) throw new Error(built.logs.map((log) => log.message).join('\n'));
     const child = Bun.spawn(['node', join(folder, 'audit.mjs')], {

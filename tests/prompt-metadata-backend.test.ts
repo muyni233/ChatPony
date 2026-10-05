@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import { mkdirSync, rmSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { join, resolve, sep } from 'node:path';
+import { projectAliasPlugin } from './fixture-build';
 
 test('Prompt metadata: admin API, ephemeral context injection, budget and shared turn clock', async () => {
   const root = resolve('.tmp'),
@@ -16,6 +17,7 @@ test('Prompt metadata: admin API, ephemeral context injection, budget and shared
       target: 'node',
       format: 'esm',
       external: ['nodemailer', 'lunar-javascript'],
+      plugins: [projectAliasPlugin],
     });
     if (!built.success) throw new Error(built.logs.map((log) => log.message).join('\n'));
     const child = Bun.spawn(['node', join(folder, 'prompt-metadata.mjs')], {
