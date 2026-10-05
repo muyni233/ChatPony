@@ -10,6 +10,7 @@ test('Three-window quotas and registration domains: migrations, switches, resets
   try {
     const built = await Bun.build({
       entrypoints: ['src/app/api/[...path]/route.ts'],
+      tsconfig: resolve('tsconfig.json'),
       outdir: folder,
       naming: 'route.mjs',
       target: 'node',

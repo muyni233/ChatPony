@@ -10,6 +10,7 @@ test('Admin user directory: more than 1000 users, literal search, bounded pagina
   try {
     const built = await Bun.build({
       entrypoints: ['tests/admin-user-cases.ts'],
+      tsconfig: resolve('tsconfig.json'),
       outdir: folder,
       naming: 'admin-users.mjs',
       target: 'node',

@@ -10,6 +10,7 @@ test('Prompt metadata: admin API, ephemeral context injection, budget and shared
   try {
     const built = await Bun.build({
       entrypoints: ['tests/prompt-metadata-backend-cases.ts'],
+      tsconfig: resolve('tsconfig.json'),
       outdir: folder,
       naming: 'prompt-metadata.mjs',
       target: 'node',

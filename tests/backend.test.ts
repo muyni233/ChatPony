@@ -10,6 +10,7 @@ test('Node 24 backend integration: bootstrap, permissions, memory, encrypted pro
   try {
     const built = await Bun.build({
       entrypoints: ['src/app/api/[...path]/route.ts'],
+      tsconfig: resolve('tsconfig.json'),
       outdir: folder,
       naming: 'route.mjs',
       target: 'node',

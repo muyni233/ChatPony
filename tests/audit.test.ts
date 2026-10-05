@@ -10,6 +10,7 @@ test('Node 24 audit metadata and statistics use an isolated SQLite database', as
   try {
     const built = await Bun.build({
       entrypoints: ['tests/audit-cases.ts'],
+      tsconfig: resolve('tsconfig.json'),
       outdir: folder,
       naming: 'audit.mjs',
       target: 'node',

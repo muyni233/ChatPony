@@ -10,6 +10,7 @@ test('Announcements: permissions, draft visibility, per-user versioned reads and
   try {
     const build = await Bun.build({
       entrypoints: ['tests/announcement-cases.ts'],
+      tsconfig: resolve('tsconfig.json'),
       outdir: folder,
       naming: 'announcements.mjs',
       target: 'node',
