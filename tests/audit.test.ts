@@ -15,7 +15,7 @@ test('Node 24 audit metadata and statistics use an isolated SQLite database', as
       naming: 'audit.mjs',
       target: 'node',
       format: 'esm',
-      packages: 'external',
+      external: ['nodemailer', 'lunar-javascript'],
     });
     if (!built.success) throw new Error(built.logs.map((log) => log.message).join('\n'));
     const child = Bun.spawn(['node', join(folder, 'audit.mjs')], {

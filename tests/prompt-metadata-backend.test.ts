@@ -15,7 +15,7 @@ test('Prompt metadata: admin API, ephemeral context injection, budget and shared
       naming: 'prompt-metadata.mjs',
       target: 'node',
       format: 'esm',
-      packages: 'external',
+      external: ['nodemailer', 'lunar-javascript'],
     });
     if (!built.success) throw new Error(built.logs.map((log) => log.message).join('\n'));
     const child = Bun.spawn(['node', join(folder, 'prompt-metadata.mjs')], {

@@ -15,7 +15,7 @@ test('Announcements: permissions, draft visibility, per-user versioned reads and
       naming: 'announcements.mjs',
       target: 'node',
       format: 'esm',
-      packages: 'external',
+      external: ['nodemailer', 'lunar-javascript'],
     });
     if (!build.success) throw new Error(build.logs.map((log) => log.message).join('\n'));
     const child = Bun.spawn(['node', join(folder, 'announcements.mjs')], {

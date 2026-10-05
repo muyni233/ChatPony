@@ -15,7 +15,7 @@ test('Node 24 backend integration: bootstrap, permissions, memory, encrypted pro
       naming: 'route.mjs',
       target: 'node',
       format: 'esm',
-      packages: 'external',
+      external: ['nodemailer', 'lunar-javascript'],
     });
     if (!built.success) throw new Error(built.logs.map((log) => log.message).join('\n'));
     const process = Bun.spawn(['node', 'scripts/backend-smoke.mjs', join(folder, 'route.mjs')], {

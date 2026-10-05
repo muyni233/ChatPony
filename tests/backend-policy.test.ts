@@ -15,7 +15,7 @@ test('Three-window quotas and registration domains: migrations, switches, resets
       naming: 'route.mjs',
       target: 'node',
       format: 'esm',
-      packages: 'external',
+      external: ['nodemailer', 'lunar-javascript'],
     });
     if (!built.success) throw new Error(built.logs.map((log) => log.message).join('\n'));
     for (const script of ['backend-policy-smoke', 'backend-quota-migration-smoke']) {

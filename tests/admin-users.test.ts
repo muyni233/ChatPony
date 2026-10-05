@@ -15,7 +15,7 @@ test('Admin user directory: more than 1000 users, literal search, bounded pagina
       naming: 'admin-users.mjs',
       target: 'node',
       format: 'esm',
-      packages: 'external',
+      external: ['nodemailer', 'lunar-javascript'],
     });
     if (!built.success) throw new Error(built.logs.map((log) => log.message).join('\n'));
     const child = Bun.spawn(['node', join(folder, 'admin-users.mjs')], {
