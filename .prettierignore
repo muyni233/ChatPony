@@ -1,0 +1,13 @@
+node_modules/
+.next/
+.venv/
+.tmp/
+data/
+test-results/
+playwright-report/
+bun.lock
+next-env.d.ts
+AGENTS.md
+CLAUDE.md
+*.tsbuildinfo
+__pycache__/

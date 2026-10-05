@@ -1,0 +1,14 @@
+node_modules/
+.next/
+.env*
+!.env.example
+data/
+*.tsbuildinfo
+test-results/
+playwright-report/
+.DS_Store
+.venv/
+__pycache__/
+.tmp/
+*.log
+next-env.d.ts

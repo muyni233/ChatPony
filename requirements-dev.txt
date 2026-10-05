@@ -1,0 +1,2 @@
+# Only needed for optional browser QA scripts; app runtime uses Node.js + Bun.
+playwright==1.63.0

@@ -1,0 +1,16 @@
+services:
+  chatpony:
+    build: .
+    restart: unless-stopped
+    ports:
+      - '3210:3000'
+    volumes:
+      - chatpony-data:/app/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    stop_grace_period: 30s
+
+volumes:
+  chatpony-data:

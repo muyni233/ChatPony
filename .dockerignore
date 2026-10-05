@@ -1,0 +1,15 @@
+node_modules
+.next
+.git
+data
+test-results
+playwright-report
+.env*
+*.tsbuildinfo
+tests
+AGENTS.md
+CLAUDE.md
+.venv
+__pycache__
+.tmp
+*.log

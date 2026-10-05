@@ -1,0 +1,110 @@
+.composer-quota {
+  padding: 0 3px 8px;
+  color: #8f9c80;
+  font-size: 10px;
+  line-height: 1.8;
+}
+.nav-announcement-badge {
+  margin-left: auto;
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: #ece7db;
+  color: #867153;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.quota-inline-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+}
+.quota-counting {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.quota-inline-windows {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.quota-inline-windows > span {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+}
+.quota-inline-windows b {
+  font-weight: 500;
+  color: #59774b;
+}
+.quota-inline-windows > span > span {
+  font-size: 9px;
+  margin-left: -3px;
+  color: #a4ae95;
+}
+.quota-refresh {
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: #8da27b;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  transition:
+    color 140ms ease,
+    background-color 140ms ease;
+}
+.quota-refresh:hover {
+  background: #e8eddf;
+  color: #527341;
+}
+.quota-refresh:focus-visible {
+  outline: 2px solid #8ea779;
+  outline-offset: 2px;
+}
+.quota-exhausted .quota-inline-windows b {
+  color: #aa7458;
+}
+.quota-inline-notice {
+  padding: 8px 11px;
+  margin: 5px 0 3px;
+  background: #f5eee2;
+  border: 1px solid #e7dcc8;
+  border-radius: 5px;
+  color: #9a7858;
+  font-size: 11px;
+  line-height: 1.8;
+}
+@media (max-width: 540px) {
+  .composer-quota {
+    font-size: 9px;
+    padding-bottom: 5px;
+  }
+  .quota-inline-windows {
+    gap: 8px;
+    font-size: 9px;
+  }
+  .quota-inline-notice {
+    font-size: 10px;
+  }
+  .quota-counting {
+    gap: 4px;
+  }
+  .quota-refresh {
+    width: 24px;
+    height: 24px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .quota-refresh {
+    transition: none;
+  }
+}
