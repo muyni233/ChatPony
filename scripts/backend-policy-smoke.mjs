@@ -231,7 +231,7 @@ try {
   const cleared = await api(
     'PATCH',
     'admin/settings',
-    { allowedEmailDomains: [], quota5h: 2, quota7d: 3, allowPrivateApiUrls: true },
+    { allowedEmailDomains: [], quota5h: 2, quota7d: 3 },
     admin.cookie,
   );
   check(

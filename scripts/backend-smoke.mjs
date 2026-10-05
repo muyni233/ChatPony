@@ -130,6 +130,7 @@ async function request(method, path, body, cookie = '', extra = {}) {
     ...(cookie ? { Cookie: cookie } : {}),
     ...extra.headers,
   });
+  if (extra.omitOrigin) headers.delete('Origin');
   return route[method](
     new Request(`${extra.requestOrigin || origin}/api/${path}`, {
       method,
@@ -228,6 +229,55 @@ try {
     bindAddress.status === 401,
     'CSRF uses the browser Host when Next exposes its bind address',
   );
+  for (const [label, extra] of [
+    ['missing origin', { omitOrigin: true }],
+    ['opaque origin', { headers: { Origin: 'null' } }],
+    ['malformed origin', { headers: { Origin: 'not a URL' } }],
+    ['credentials in origin', { headers: { Origin: 'http://user@localhost:3000' } }],
+    ['path in origin', { headers: { Origin: `${origin}/` } }],
+    ['query in origin', { headers: { Origin: `${origin}?extra=1` } }],
+    ['fragment in origin', { headers: { Origin: `${origin}#extra` } }],
+    ['multiple origins', { headers: { Origin: `${origin}, https://other.example` } }],
+    ['different protocol', { headers: { Origin: 'https://localhost:3000' } }],
+    ['different port', { headers: { Origin: 'http://localhost:3001' } }],
+    ['different subdomain', { headers: { Origin: 'http://other.localhost:3000' } }],
+    ['cross-site fetch metadata', { headers: { 'Sec-Fetch-Site': 'cross-site' } }],
+    ['empty host', { headers: { Host: '' } }],
+    ['host with userinfo', { headers: { Host: 'user@localhost:3000' } }],
+    ['host with path', { headers: { Host: 'localhost:3000/path' } }],
+    ['multiple hosts', { headers: { Host: 'localhost:3000,other.example' } }],
+    [
+      'forged forwarded host',
+      {
+        headers: {
+          Origin: 'http://other.example',
+          'X-Forwarded-Host': 'other.example',
+        },
+      },
+    ],
+  ]) {
+    const rejected = await api('POST', 'auth/login', {}, '', extra);
+    check(
+      rejected.status === 403 && rejected.data.error.code === 'INVALID_ORIGIN',
+      `CSRF rejects ${label}`,
+    );
+  }
+  for (const [label, requestOrigin, browserOrigin, host] of [
+    ['direct HTTP', origin, origin, 'localhost:3000'],
+    ['direct HTTPS', 'https://chat.example', 'https://chat.example', 'chat.example'],
+    ['TLS proxy', 'https://127.0.0.1:3210', 'https://chat.example', 'chat.example'],
+    ['HTTPS port', 'https://127.0.0.1:3210', 'https://chat.example:8443', 'chat.example:8443'],
+    ['IPv6 loopback', 'http://[::1]:3210', 'http://[::1]:3210', '[::1]:3210'],
+  ]) {
+    const allowed = await api('POST', 'auth/login', {}, '', {
+      requestOrigin,
+      headers: { Origin: browserOrigin, Host: host, 'Sec-Fetch-Site': 'same-origin' },
+    });
+    check(
+      allowed.status === 400 && allowed.data.error.code === 'INVALID_EMAIL',
+      `Same-origin ${label} reaches the login handler`,
+    );
+  }
   const concurrent = await Promise.all([
     api('POST', 'auth/register', {
       username: '管理员甲',
@@ -267,10 +317,64 @@ try {
   const settings = await api(
     'PATCH',
     'admin/settings',
-    { requireEmailVerification: false, allowPrivateApiUrls: true },
+    { requireEmailVerification: false },
     adminCookie,
   );
   check(settings.status === 200, 'Administrator can configure site without environment secrets');
+  const wrongSiteUrl = 'https://wrong-site.example';
+  check(
+    (await api('PATCH', 'admin/settings', { siteUrl: wrongSiteUrl }, adminCookie)).status === 200,
+    'Administrator can change the public mail-link address',
+  );
+  const recoveryLogin = await api('POST', 'auth/login', {
+    email: administrator.data.user.email,
+    password: 'strong-password-2026',
+  });
+  check(recoveryLogin.status === 200, 'A wrong public URL does not lock out existing logins');
+  const recoveryRegistration = await api('POST', 'auth/register', {
+    username: '地址恢复用户',
+    email: 'origin-recovery@example.test',
+    password: 'origin-recovery-password',
+  });
+  check(recoveryRegistration.status === 201, 'A wrong public URL does not block registration');
+  check(
+    (await api('PATCH', 'admin/settings', { siteUrl: origin }, recoveryRegistration.cookie))
+      .status === 403,
+    'Recovery still requires administrator permissions',
+  );
+  check(
+    (
+      await api(
+        'DELETE',
+        'profile',
+        { password: 'origin-recovery-password' },
+        recoveryRegistration.cookie,
+      )
+    ).status === 200,
+    'Temporary recovery user can close their account',
+  );
+  check(
+    (
+      await api('PATCH', 'admin/settings', { siteUrl: origin }, adminCookie, {
+        headers: { Origin: wrongSiteUrl, 'X-Forwarded-Host': 'wrong-site.example' },
+      })
+    ).status === 403,
+    'Configured mail URL and forwarded host cannot authorize a foreign origin',
+  );
+  check(
+    (await api('PATCH', 'admin/settings', { siteUrl: origin })).status === 401,
+    'URL recovery does not bypass authentication',
+  );
+  check(
+    (await api('PATCH', 'admin/settings', { siteUrl: origin }, recoveryLogin.cookie)).status ===
+      200,
+    'Administrator can correct a wrong public URL from the original address',
+  );
+  check(
+    (await api('PATCH', 'admin/settings', { siteUrl: `${origin}/bad-path` }, adminCookie))
+      .status === 400,
+    'Mail URL validation still rejects paths',
+  );
   const noSeparator = await api('PATCH', 'admin/settings', { bubbleSeparator: '' }, adminCookie);
   check(
     noSeparator.status === 200 && noSeparator.data.settings.bubbleSeparator === '',
@@ -547,24 +651,55 @@ try {
     ).status === 503,
     'A mentioned character requires an available model',
   );
-  const provider = await api(
-    'POST',
-    'admin/providers',
-    {
-      name: '本地协议测试',
-      protocol: 'openai-chat',
-      baseUrl: `http://127.0.0.1:${upstream.address().port}/v1`,
-      model: 'test-roleplay',
-      apiKey: 'secret-test-key',
-      enabled: true,
-      isDefault: true,
-    },
-    adminCookie,
+  db = new DatabaseSync(process.env.DATABASE_PATH);
+  const legacySettings = JSON.parse(
+    db.prepare("SELECT value FROM settings WHERE key='site'").get().value,
+  );
+  db.prepare("UPDATE settings SET value=? WHERE key='site'").run(
+    JSON.stringify({ ...legacySettings, allowPrivateApiUrls: false }),
   );
   check(
-    provider.status === 201 && provider.data.provider.hasApiKey,
-    'Encrypted model service configuration saves',
+    !Object.hasOwn(
+      (await api('GET', 'admin/settings', undefined, adminCookie)).data.settings,
+      'allowPrivateApiUrls',
+    ),
+    'Legacy private-address switch is omitted from current settings',
   );
+  const providerInput = {
+    name: '本地协议测试',
+    protocol: 'openai-chat',
+    baseUrl: `http://127.0.0.1:${upstream.address().port}/v1`,
+    model: 'test-roleplay',
+    apiKey: 'secret-test-key',
+    enabled: true,
+    isDefault: true,
+  };
+  check(
+    (await api('POST', 'admin/providers', providerInput, alice.cookie)).status === 403,
+    'Ordinary users cannot configure arbitrary model destinations',
+  );
+  const provider = await api('POST', 'admin/providers', providerInput, adminCookie);
+  check(
+    provider.status === 201 && provider.data.provider.hasApiKey,
+    'Local model configuration saves without a private-address switch, including legacy false',
+  );
+  check(
+    (await api('POST', `admin/providers/${provider.data.provider.id}/test`, {}, adminCookie))
+      .status === 200,
+    'Administrator can test a local model without a private-address switch',
+  );
+  for (const baseUrl of [
+    'file:///tmp/model',
+    'https://user:secret@example.com/v1',
+    'https://example.com/v1?key=secret',
+    'https://example.com/v1#fragment',
+  ]) {
+    check(
+      (await api('POST', 'admin/providers', { ...providerInput, baseUrl }, adminCookie)).status ===
+        400,
+      'Private network support retains model URL syntax restrictions',
+    );
+  }
   check(
     !JSON.stringify(provider.data).includes('secret-test-key'),
     'Admin responses never disclose API keys',
@@ -575,7 +710,6 @@ try {
       !JSON.stringify(publicProviders.data).includes('secret-test-key'),
     'Public model list is redacted',
   );
-  db = new DatabaseSync(process.env.DATABASE_PATH);
   const conversationsBeforeFailure = db.prepare('SELECT COUNT(*) AS n FROM conversations').get().n;
   db.exec(
     "CREATE TRIGGER reject_greeting_for_atomicity BEFORE INSERT ON messages WHEN NEW.role='assistant' BEGIN SELECT RAISE(ABORT, 'simulated greeting insert failure'); END;",

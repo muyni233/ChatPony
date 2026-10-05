@@ -172,7 +172,8 @@ export function selectProvider(id: string | null) {
   return {
     ...toProvider(row),
     apiKey: decryptSecret(row.api_key_cipher),
-    allowPrivateUrls: getSettings().allowPrivateApiUrls,
+    // Only administrators can configure services, including local and private endpoints.
+    allowPrivateUrls: true,
   };
 }
 

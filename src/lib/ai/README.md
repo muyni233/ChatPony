@@ -30,7 +30,7 @@ for await (const text of generateText(providerWithSecret, prepared, signal)) {
 
 `completeText(config, input, signal?)` collects a successful generation. `createAIClient(runtime)` provides isolated fetch/DNS/sleep dependencies for offline tests. Runtime overrides must never be accepted from public request bodies.
 
-`ProviderConfig` contains `protocol`, `baseUrl`, `model`, `apiKey`, `contextWindow`, `maxOutputTokens`, `temperature`, and the optional `allowPrivateUrls` admin setting. No environment variable is required. An explicit `false` is authoritative.
+`ProviderConfig` contains `protocol`, `baseUrl`, `model`, `apiKey`, `contextWindow`, `maxOutputTokens`, `temperature`, and the optional `allowPrivateUrls` runtime policy. ChatPony sets `allowPrivateUrls: true` for every stored service because only administrators can configure its address; local and private endpoints work without a separate platform setting. The reusable AI library keeps its conservative default: private addresses are denied unless the provider or runtime opts in, and an explicit provider-level `false` is authoritative over runtime overrides. No environment variable is required.
 
 ## Protocols
 
@@ -54,7 +54,9 @@ For an origin-only base URL, `/v1` is used for Anthropic/OpenAI and `/v1beta` fo
 
 ## Network boundary
 
-Provider addresses must be HTTP(S), without credentials, fragments, arbitrary query strings or control characters. By default literal and DNS-resolved private, local, multicast and reserved addresses are denied; every DNS record must be public. Redirects are disabled so credentials cannot follow a redirect to a different host. Only an administrator can enable private API URLs in the platform settings.
+Provider addresses must be HTTP(S), without credentials, fragments, query strings or control characters. Redirects are disabled so credentials cannot follow a redirect to a different host. ChatPony treats an administrator's saved provider address as authorized, including loopback and private network destinations; the same policy applies to connection tests, replies and context compression. Public users can select an enabled stored service but cannot supply or alter its endpoint.
+
+When the AI library is reused without `allowPrivateUrls: true`, literal and DNS-resolved private, local, multicast and reserved addresses remain denied; every DNS record must be public. This library policy remains separate from ChatPony's administrator-managed provider configuration. Legacy `allowPrivateApiUrls` platform values are ignored and are omitted from settings responses and subsequent saves.
 
 Native fetch performs its own connection lookup after DNS preflight. Therefore DNS rebinding is not eliminated by application validation alone. Production deployments should also restrict outbound access to internal/metadata networks at the network or proxy layer when provider hosts are not trusted. Do not present application DNS validation as a replacement for an outbound firewall.
 

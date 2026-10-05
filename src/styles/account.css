@@ -285,6 +285,12 @@
   color: #8e9687;
   font-weight: 400;
 }
+.site-url-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
 .password-hint {
   margin: -13px 0 -5px;
   font-size: 10px;

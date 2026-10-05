@@ -28,7 +28,6 @@ export interface SiteSettings extends PromptMetadataOptions {
   smtpFrom: string;
   smtpPasswordCipher: string;
   localDemoMode: boolean;
-  allowPrivateApiUrls: boolean;
   trustProxy: boolean;
   quota5h: number;
   quota1d: number;
@@ -59,7 +58,6 @@ const defaults: SiteSettings = {
   smtpFrom: '',
   smtpPasswordCipher: '',
   localDemoMode: false,
-  allowPrivateApiUrls: false,
   trustProxy: false,
   quota5h: 50,
   quota1d: 100,
@@ -80,8 +78,13 @@ export function getSettings(): SiteSettings {
   const row = getDb().prepare("SELECT value FROM settings WHERE key='site'").get() as
     { value: string } | undefined;
   if (!row) return { ...defaults };
-  const saved = JSON.parse(row.value) as Partial<SiteSettings> & { maxDailyTurns?: number };
+  const saved = JSON.parse(row.value) as Partial<SiteSettings> & {
+    maxDailyTurns?: number;
+    allowPrivateApiUrls?: unknown;
+  };
   delete saved.maxDailyTurns;
+  // Retired flags must neither reappear in settings nor gate administrator-configured services.
+  delete saved.allowPrivateApiUrls;
   return { ...defaults, ...saved };
 }
 
@@ -283,7 +286,6 @@ export async function adminSettings(request: Request) {
         ? encryptSecret(textField(body, 'smtpPassword', 4096, 1))
         : existing.smtpPasswordCipher,
     localDemoMode: booleanField(body, 'localDemoMode', existing.localDemoMode),
-    allowPrivateApiUrls: booleanField(body, 'allowPrivateApiUrls', existing.allowPrivateApiUrls),
     trustProxy: booleanField(body, 'trustProxy', existing.trustProxy),
     quota5h: numberField(body, 'quota5h', 0, 1000000, existing.quota5h, true),
     quota1d: numberField(body, 'quota1d', 0, 1000000, existing.quota1d, true),

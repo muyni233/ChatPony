@@ -82,7 +82,6 @@ with sync_playwright() as playwright:
         page.locator('#site-url').fill(BASE + '/')
         page.locator('input[name="requireEmailVerification"]').uncheck()
         page.locator('input[name="localDemoMode"]').check()
-        page.locator('input[name="allowPrivateApiUrls"]').check()
         page.get_by_role('button', name='保存站点设置').click()
         expect(page.get_by_role('status')).to_contain_text('站点设置已保存')
         stored = context.request.get(BASE + '/api/admin/settings').json()['settings']

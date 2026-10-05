@@ -2,7 +2,7 @@ import type { NextConfig } from 'next';
 const config: NextConfig = {
   poweredByHeader: false,
   turbopack: { root: process.cwd() },
-  allowedDevOrigins: ['127.0.0.1'],
+  allowedDevOrigins: ['127.0.0.1', 'chat.muyni.dpdns.org'],
   devIndicators: false,
   output: 'standalone',
   outputFileTracingExcludes: {

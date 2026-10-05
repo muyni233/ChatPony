@@ -64,7 +64,6 @@ with sync_playwright() as p:
         expect(page.locator('.admin-preview-bubbles p')).to_have_count(1)
         print('PASS administrator display settings / persistence / live preview / empty and newline separators', flush=True)
 
-        mutate('/api/admin/settings', {'allowPrivateApiUrls': True}, 'PATCH')
         provider = mutate('/api/admin/providers', {'name':'QA display stream', 'protocol':'openai-chat', 'baseUrl':f'http://127.0.0.1:{server.server_port}/v1', 'apiKey':'local-fixture-only', 'model':'fixture', 'contextWindow':32000, 'maxOutputTokens':2048, 'temperature':.7, 'enabled':True, 'isDefault':False})['provider']
         created['provider'] = provider['id']
         character = mutate('/api/admin/characters', {'name':'气泡显示验证', 'englishName':'', 'subtitle':'仅在隔离数据库中验证', 'description':'用于消息显示回归。', 'personality':'你是本地测试角色。', 'greeting':'†一起聊聊吧。|||先从今天的心情开始。<control>', 'color':'#718d79', 'avatar':'', 'tags':[], 'published':True, 'order':99})['character']
@@ -118,7 +117,7 @@ with sync_playwright() as p:
         for kind in ['character', 'provider']:
             if kind in created:
                 mutate('/api/admin/' + kind + 's/' + created[kind], method='DELETE')
-        mutate('/api/admin/settings', {key:original[key] for key in ['bubbleSeparator','hiddenOutputMarkers','allowPrivateApiUrls']}, 'PATCH')
+        mutate('/api/admin/settings', {key:original[key] for key in ['bubbleSeparator','hiddenOutputMarkers']}, 'PATCH')
         context.close()
         browser.close()
         server.shutdown()

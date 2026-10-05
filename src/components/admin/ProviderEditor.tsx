@@ -135,7 +135,9 @@ export default function ProviderEditor({
             maxLength={1000}
             placeholder={baseUrls[protocol]}
           />
-          <small className="field-hint">填写 API 基础地址；系统会根据协议补全请求路径。</small>
+          <small className="field-hint">
+            支持公网、本机和局域网的 HTTP(S) 地址；系统会根据协议补全请求路径。
+          </small>
         </label>
         <label className="field" htmlFor="provider-key">
           <span>API Key {!provider?.hasApiKey && <b>*</b>}</span>

@@ -129,7 +129,6 @@ try {
   );
   await api('PATCH', 'admin/settings', admin, {
     requireEmailVerification: false,
-    allowPrivateApiUrls: true,
   });
   const member = await api('POST', 'auth/register', '', {
     username: 'MetadataReader',

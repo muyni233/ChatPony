@@ -91,7 +91,7 @@ export default function AuthForm({ mode }: { mode: AuthMode }) {
   const [registrationEnabled, setRegistrationEnabled] = useState(true);
   const [requireVerification, setRequireVerification] = useState(false);
   const [allowedEmailDomains, setAllowedEmailDomains] = useState<string[]>([]);
-  const [ready, setReady] = useState(mode !== 'register');
+  const [ready, setReady] = useState(mode !== 'register' && mode !== 'login');
   const [pendingEmail, setPendingEmail] = useState('');
   const [needsVerification, setNeedsVerification] = useState(false);
   const copy = content[mode];
@@ -99,6 +99,8 @@ export default function AuthForm({ mode }: { mode: AuthMode }) {
   useEffect(() => {
     if (mode !== 'register' && mode !== 'login') return;
     let active = true;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 15000);
     api<{
       bootstrapRequired: boolean;
       site?: {
@@ -106,7 +108,7 @@ export default function AuthForm({ mode }: { mode: AuthMode }) {
         requireEmailVerification: boolean;
         allowedEmailDomains?: string[];
       };
-    }>('/api/session')
+    }>('/api/session', { signal: controller.signal })
       .then((result) => {
         if (!active) return;
         setBootstrapRequired(result.bootstrapRequired);
@@ -117,12 +119,21 @@ export default function AuthForm({ mode }: { mode: AuthMode }) {
       })
       .catch((cause) => {
         if (active) {
-          setError(cause instanceof Error ? cause.message : '无法读取注册设置，请刷新页面重试。');
+          setError(
+            controller.signal.aborted
+              ? '读取账户设置超时，请重新加载页面。'
+              : cause instanceof Error
+                ? cause.message
+                : '无法读取账户设置，请重新加载页面。',
+          );
           setReady(false);
         }
-      });
+      })
+      .finally(() => window.clearTimeout(timeout));
     return () => {
       active = false;
+      window.clearTimeout(timeout);
+      controller.abort();
     };
   }, [mode]);
 
@@ -262,7 +273,7 @@ export default function AuthForm({ mode }: { mode: AuthMode }) {
           )}
         </div>
       ) : (
-        <form className="account-form auth-form" onSubmit={submit}>
+        <form className="account-form auth-form" method="post" onSubmit={submit}>
           {mode === 'register' && (
             <label className="field" htmlFor="username">
               <span>你的昵称</span>
@@ -338,6 +349,15 @@ export default function AuthForm({ mode }: { mode: AuthMode }) {
               {error}
             </p>
           )}
+          {!ready && error && (
+            <button
+              type="button"
+              className="button button-secondary"
+              onClick={() => window.location.reload()}
+            >
+              重新加载页面
+            </button>
+          )}
           {needsVerification && (
             <div className="auth-resend">
               <span>还没有收到验证邮件？</span>
@@ -348,14 +368,18 @@ export default function AuthForm({ mode }: { mode: AuthMode }) {
           )}
           <button
             className="button button-primary auth-submit"
-            disabled={busy || (mode === 'register' && !ready)}
+            disabled={busy || !ready}
             type="submit"
           >
             {busy ? <LoaderCircle className="spin" size={18} /> : null}
             {busy
               ? '请稍候…'
-              : mode === 'register' && !ready
-                ? '正在读取注册设置…'
+              : !ready
+                ? error
+                  ? '暂时无法读取账户设置'
+                  : mode === 'register'
+                    ? '正在读取注册设置…'
+                    : '正在加载登录页面…'
                 : mode === 'register' && bootstrapRequired
                   ? '创建管理员账户'
                   : copy.submit}

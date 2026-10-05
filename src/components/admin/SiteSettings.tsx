@@ -31,7 +31,6 @@ interface SiteConfig extends Partial<PromptMetadataOptions> {
   smtpFrom: string;
   smtpHasPassword: boolean;
   localDemoMode: boolean;
-  allowPrivateApiUrls: boolean;
   developmentMode?: boolean;
   trustProxy: boolean;
   quota5h?: number;
@@ -81,6 +80,7 @@ export default function SiteSettings() {
   const [success, setSuccess] = useState('');
   const [dirty, setDirty] = useState(false);
   const [revision, setRevision] = useState(0);
+  const [siteUrlInput, setSiteUrlInput] = useState('');
   const [separatorInput, setSeparatorInput] = useState('|||');
   const [markerInput, setMarkerInput] = useState('');
   const [domainInput, setDomainInput] = useState('');
@@ -91,15 +91,12 @@ export default function SiteSettings() {
     api<{ settings: SiteConfig }>('/api/admin/settings')
       .then((result) => {
         if (active) {
-          setSettings({
-            ...result.settings,
-            siteUrl: result.settings.siteUrl || window.location.origin,
-          });
+          setSettings(result.settings);
+          setSiteUrlInput(result.settings.siteUrl);
           setSeparatorInput(displaySeparator(result.settings.bubbleSeparator));
           setMarkerInput((result.settings.hiddenOutputMarkers ?? []).join('\n'));
           setDomainInput((result.settings.allowedEmailDomains ?? []).join('\n'));
           setMetadata(metadataDefaults(result.settings));
-          if (!result.settings.siteUrl) setDirty(true);
         }
       })
       .catch((cause) => {
@@ -141,7 +138,6 @@ export default function SiteSettings() {
       smtpFrom: get('smtpFrom'),
       ...(get('smtpPassword') ? { smtpPassword: get('smtpPassword') } : {}),
       localDemoMode: data.get('localDemoMode') === 'on',
-      allowPrivateApiUrls: data.get('allowPrivateApiUrls') === 'on',
       trustProxy: data.get('trustProxy') === 'on',
       quota5h: Number(data.get('quota5h')),
       quota7d: Number(data.get('quota7d')),
@@ -171,6 +167,7 @@ export default function SiteSettings() {
         }),
       });
       setSettings(result.settings);
+      setSiteUrlInput(result.settings.siteUrl);
       setSeparatorInput(displaySeparator(result.settings.bubbleSeparator));
       setMarkerInput((result.settings.hiddenOutputMarkers ?? []).join('\n'));
       setDomainInput((result.settings.allowedEmailDomains ?? []).join('\n'));
@@ -292,21 +289,35 @@ export default function SiteSettings() {
               />
             </label>
             <label className="field" htmlFor="site-url">
-              <span>
-                站点地址 <b>*</b>
-              </span>
+              <span>站点地址（邮件链接，可选）</span>
               <input
                 id="site-url"
                 name="siteUrl"
                 type="url"
-                defaultValue={settings.siteUrl}
-                required
+                value={siteUrlInput}
+                onChange={(event) => setSiteUrlInput(event.target.value)}
                 maxLength={500}
                 placeholder="https://chat.example.com"
+                aria-describedby="site-url-hint"
               />
-              <small className="field-hint">
-                用于邮件链接与请求来源校验，应与当前访问地址一致。填写完整域名，不含子路径；首次配置已自动填入当前地址。
+              <small id="site-url-hint" className="field-hint">
+                启用邮件时填写公开访问地址，包含协议和非默认端口，不含子路径。不使用邮件可留空；填错后仍可修改，不影响登录。
               </small>
+              <span className="site-url-actions">
+                <button
+                  type="button"
+                  className="button button-ghost"
+                  disabled={!!busy}
+                  onClick={() => {
+                    setSiteUrlInput(window.location.origin);
+                    setDirty(true);
+                    setSuccess('');
+                  }}
+                >
+                  使用当前访问地址
+                </button>
+                <small className="field-hint">填入后点击「保存站点设置」生效。</small>
+              </span>
             </label>
           </div>
         </section>
@@ -744,17 +755,6 @@ export default function SiteSettings() {
               </small>
             </label>
           </div>
-          <label className="admin-checkbox">
-            <input
-              name="allowPrivateApiUrls"
-              type="checkbox"
-              defaultChecked={settings.allowPrivateApiUrls}
-            />
-            <span>
-              <strong>允许连接私网模型服务</strong>
-              <small>用于本机或局域网中的模型服务。仅在需要并信任接口地址时启用。</small>
-            </span>
-          </label>
           <label className="admin-checkbox">
             <input
               name="localDemoMode"

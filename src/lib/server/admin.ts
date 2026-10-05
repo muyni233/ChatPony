@@ -4,7 +4,6 @@ import { completeText, validateProviderUrl } from '@/lib/ai';
 import { getDb, transaction } from './db';
 import { booleanField, HttpError, json, numberField, rateLimit, readBody, textField } from './http';
 import { encryptSecret } from './secrets';
-import { getSettings } from './settings';
 import { requireAdmin } from './auth';
 import {
   characters,
@@ -143,11 +142,11 @@ export async function adminProviders(request: Request, id?: string) {
     throw new HttpError(400, '请选择支持的 API 协议。', 'INVALID_PROTOCOL');
   const baseUrl = textField(body, 'baseUrl', 1000, 1, previous?.baseUrl);
   try {
-    validateProviderUrl(baseUrl, { allowPrivateUrls: getSettings().allowPrivateApiUrls });
+    validateProviderUrl(baseUrl, { allowPrivateUrls: true });
   } catch {
     throw new HttpError(
       400,
-      'API 地址无效；如需内网服务，请先在站点设置中允许私网 API 地址。',
+      'API 地址无效，请使用不含账号密码、查询参数或片段的 http(s) 地址。',
       'INVALID_PROVIDER_URL',
     );
   }

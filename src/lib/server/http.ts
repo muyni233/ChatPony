@@ -105,27 +105,31 @@ export function numberField(
 export function assertSameOrigin(request: Request) {
   if (['GET', 'HEAD', 'OPTIONS'].includes(request.method)) return;
   const origin = request.headers.get('origin');
-  let expected: string;
+  const invalid = () =>
+    new HttpError(403, '请求来源验证失败，请刷新页面后重试。', 'INVALID_ORIGIN');
+  if (!origin || request.headers.get('sec-fetch-site') === 'cross-site') throw invalid();
   try {
-    const saved = getDb().prepare("SELECT value FROM settings WHERE key='site'").get() as
-      { value: string } | undefined;
-    const siteUrl = saved ? (JSON.parse(saved.value) as { siteUrl?: string }).siteUrl : '';
-    if (siteUrl) expected = new URL(siteUrl).origin;
-    else {
-      const requestUrl = new URL(request.url);
-      // Next may expose its bind address (0.0.0.0) in request.url. The browser's
-      // Host header is the actual addressed origin and cannot be set by page JS.
-      const host = request.headers.get('host') || requestUrl.host;
-      if (!host || /[\s/@\\?#]/.test(host)) throw new Error();
-      const originUrl = origin ? new URL(origin) : null;
-      if (originUrl && !['http:', 'https:'].includes(originUrl.protocol)) throw new Error();
-      expected = new URL(`${originUrl?.protocol || requestUrl.protocol}//${host}`).origin;
-    }
+    const requestUrl = new URL(request.url);
+    const originUrl = new URL(origin);
+    // The configured siteUrl is for mail links, never a CSRF allowlist. Otherwise
+    // a typo locks out the administrator and can allow an unrelated Origin.
+    // Next may expose its bind address in request.url, so use the actual Host.
+    // A TLS proxy must preserve Host and overwrite X-Forwarded-Proto: Next uses
+    // that header to build request.url. Never infer the protocol from Origin.
+    const host = request.headers.get('host') ?? requestUrl.host;
+    if (
+      !['http:', 'https:'].includes(requestUrl.protocol) ||
+      !['http:', 'https:'].includes(originUrl.protocol) ||
+      origin !== originUrl.origin ||
+      !host ||
+      /[\s/@\\?#,%]/.test(host)
+    )
+      throw invalid();
+    const expected = new URL(`${requestUrl.protocol}//${host}`).origin;
+    if (origin !== expected) throw invalid();
   } catch {
-    throw new HttpError(503, '站点地址配置无效，请联系管理员。', 'CONFIG_ERROR');
+    throw invalid();
   }
-  if (!origin || origin !== expected || request.headers.get('sec-fetch-site') === 'cross-site')
-    throw new HttpError(403, '请求来源验证失败，请刷新页面后重试。', 'INVALID_ORIGIN');
 }
 
 export function fingerprint(request: Request) {
