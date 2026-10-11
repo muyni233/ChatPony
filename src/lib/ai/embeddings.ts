@@ -412,7 +412,8 @@ async function requestVectors(
   let apiKey: string;
   try {
     apiKey = decrypt(config.value.apiKey);
-  } catch {
+  } catch (error) {
+    if (error instanceof AppError) throw error;
     throw new AppError(503, 'EMBEDDING_KEY', '向量模型密钥无法读取，请联系管理员重新设置。');
   }
   const timeout = new AbortController();

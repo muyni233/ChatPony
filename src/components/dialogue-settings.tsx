@@ -48,9 +48,12 @@ function ModelChoice({
     (model) => model.kind === 'language' && model.active && model.supplierActive,
   );
   return (
-    <Field label={label} hint="可选用已启用的对话模型；留空使用本地摘录，不额外调用模型。">
+    <Field
+      label={label}
+      hint="选择语言模型会生成语义摘要；原文截取只裁剪历史片段，不理解内容，可能遗漏信息。"
+    >
       <Select value={value} onValueChange={onChange} disabled={disabled}>
-        <option value="">本地摘录（不调用模型）</option>
+        <option value="">原文截取（不调用模型）</option>
         {value && !available.some((model) => model.id === value) && (
           <option value={value} disabled>
             原模型已不可用，请重新选择
@@ -227,7 +230,7 @@ export function DialogueSettings({
       <div className="admin-dialogue-call-note">
         <Cpu size={18} />
         <p>
-          选择远程摘要模型会产生额外的供应商请求并记录在请求审查中，不计入用户的角色对话额度。选择本地摘录时不会额外调用模型。
+          选择语言模型后，由该模型理解并总结历史内容；调用会记录在请求审查中，不计入角色对话额度。“原文截取”只保留部分历史原文，不生成语义摘要。
         </p>
       </div>
       <div className="admin-dialogue-sections">

@@ -7,7 +7,7 @@ import { getQuota } from './quota';
 import { annotateMemoryStatus } from './ai/embeddings';
 import { normalizeEmailDomains } from './email-policy';
 import { assertMailConfigured } from './mail';
-import { removeOwnedAvatar } from './avatars';
+import { isOwnedAvatar, removeOwnedAvatar } from './avatars';
 import {
   toAnnouncement,
   toCharacter,
@@ -85,6 +85,13 @@ const avatar = z
       return false;
     }
   }, '头像应使用 http 或 https 图片地址');
+const characterAvatar = z.union([
+  avatar,
+  z
+    .string()
+    .max(2048)
+    .regex(/^\/api\/avatars\/character-[a-zA-Z0-9_-]+\.webp$/),
+]);
 const supplierFields = z
   .object({
     name: shortText(60),
@@ -178,7 +185,7 @@ const characterFields = z
       .string()
       .regex(/^[a-z0-9][a-z0-9_-]{0,39}$/, '标识仅支持小写字母、数字、下划线与短横线，最多 40 位'),
     description: z.string().trim().max(500),
-    avatar,
+    avatar: characterAvatar,
     color: z.string().regex(/^#[a-fA-F0-9]{6}$/, '颜色应为六位十六进制值'),
     tags: z.array(shortText(24)).max(10),
     personality: shortText(20_000),
@@ -294,7 +301,8 @@ export function updateSettings(input: Record<string, unknown>): PlatformSettings
     .transaction(() => {
       if (changes.emailDomains !== undefined)
         changes.emailDomains = normalizeEmailDomains(changes.emailDomains);
-      const next = { ...getSettings(), ...changes };
+      const previous = getSettings();
+      const next = { ...previous, ...changes };
       if (next.emailDomainMode === 'allowlist' && next.emailDomains.length === 0)
         throw new AppError(400, 'INVALID_EMAIL_DOMAIN', '允许列表至少需要一个邮箱域名。');
       if (changes.requireEmailVerification === true) assertMailConfigured();
@@ -323,6 +331,18 @@ export function updateSettings(input: Record<string, unknown>): PlatformSettings
             'INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',
           )
           .run(key, JSON.stringify(value));
+      // Changing a global quota intentionally replaces per-account overrides on
+      // that axis. Same-value saves leave overrides and usage accounting intact.
+      if (
+        changes.defaultLimit5h !== undefined &&
+        changes.defaultLimit5h !== previous.defaultLimit5h
+      )
+        getDb().query('UPDATE users SET limit_5h=?').run(changes.defaultLimit5h);
+      if (
+        changes.defaultLimit7d !== undefined &&
+        changes.defaultLimit7d !== previous.defaultLimit7d
+      )
+        getDb().query('UPDATE users SET limit_7d=?').run(changes.defaultLimit7d);
     })
     .immediate();
   return getSettings();
@@ -956,7 +976,7 @@ export function saveCharacter(
       ? characterFields.partial()
       : characterFields.extend({
           description: z.string().trim().max(500).default(''),
-          avatar: avatar.default(''),
+          avatar: characterAvatar.default(''),
           color: z
             .string()
             .regex(/^#[a-fA-F0-9]{6}$/)
@@ -980,6 +1000,17 @@ export function saveCharacter(
     active: existing?.active,
     ...patch,
   });
+  if (
+    data.avatar.startsWith('/api/avatars/') &&
+    (!characterId ||
+      data.avatar !== existing?.avatar ||
+      !isOwnedAvatar(`character-${characterId}`, data.avatar))
+  )
+    throw new AppError(
+      400,
+      'INVALID_AVATAR',
+      '请上传角色头像，或使用有效的 HTTP / HTTPS 图片地址。',
+    );
   const providerId = data.providerId || null;
   const provider = providerId
     ? found(

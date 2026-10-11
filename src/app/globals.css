@@ -21,8 +21,14 @@
 }
 html {
   min-height: 100%;
-  scroll-behavior: smooth;
   scrollbar-gutter: stable;
+}
+@supports (scrollbar-gutter: stable) {
+  /* The root already reserves the scrollbar. Radix must not reserve it again. */
+  html body[data-scroll-locked] {
+    margin-right: 0 !important;
+    --removed-body-scroll-bar-size: 0px !important;
+  }
 }
 body {
   margin: 0;
@@ -247,9 +253,7 @@ button:disabled {
     0 2px 5px #29452808;
   transform-origin: var(--radix-select-content-transform-origin);
   opacity: 1;
-  transition:
-    opacity 150ms var(--ease-out),
-    transform 150ms var(--ease-out);
+  transition: opacity 150ms var(--ease-out);
 }
 .select-viewport {
   padding: 1px;
@@ -299,7 +303,6 @@ button:disabled {
 @starting-style {
   .select-content {
     opacity: 0;
-    transform: translateY(-3px) scale(0.985);
   }
 }
 @media (hover: hover) and (pointer: fine) {
@@ -2422,7 +2425,7 @@ button:disabled {
   font-size: 12px;
 }
 
-.main-chat {
+.main-content.main-chat {
   padding: 0;
   max-width: none;
   display: flex;

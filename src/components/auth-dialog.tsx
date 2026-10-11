@@ -13,6 +13,7 @@ import {
 import { useApp } from './app-provider';
 import { Button, Field, Modal } from './ui';
 import { ApiError, api, json } from '@/lib/client';
+import type { User } from '@/lib/types';
 
 export function AuthDialog() {
   const { authMode, closeAuth, openAuth, refresh, notify, data } = useApp();
@@ -85,8 +86,14 @@ export function AuthDialog() {
     setBusy(true);
     setError('');
     try {
-      await api(`/auth/${authMode}`, json('POST', Object.fromEntries(form)));
-      await refresh();
+      const account = await api<User>(`/auth/${authMode}`, json('POST', Object.fromEntries(form)));
+      const session = await refresh();
+      if (!session || session.user?.id !== account.id)
+        throw new ApiError(
+          '登录会话未能保存，请检查浏览器 Cookie 设置并重试。',
+          'SESSION_NOT_ESTABLISHED',
+          401,
+        );
       closeAuth();
       notify(authMode === 'register' ? '注册成功，欢迎来到 ChatPony。' : '欢迎回来。');
     } catch (e) {

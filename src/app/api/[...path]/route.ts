@@ -15,6 +15,7 @@ import { getQuota, resetQuota } from '@/lib/quota';
 import { getMailConfig, sendVerificationCode, testMail, updateMailConfig } from '@/lib/mail';
 import { normalizeEmail } from '@/lib/email-policy';
 import { AVATAR_JSON_BYTES, avatarResponse, uploadAvatar } from '@/lib/avatars';
+import { saveCharacterWithAvatar } from '@/lib/character-avatars';
 import { getAudit, getAuditStats, listAudit } from '@/lib/audit';
 import {
   getEmbeddingSettings,
@@ -44,7 +45,6 @@ import {
   listSuppliers,
   listUsers,
   saveAnnouncement,
-  saveCharacter,
   saveProvider,
   saveSupplier,
   updateAccount,
@@ -129,7 +129,7 @@ async function handle(request: Request, context: RouteContext): Promise<Response
       return await avatarResponse(path[1]);
     if (method === 'POST' && route === 'auth/register') {
       const user = await register(request, await body(request));
-      return json(user, 201, createSession(user.id));
+      return json(user, 201, createSession(user.id, request));
     }
     if (method === 'POST' && route === 'auth/verification/send') {
       const input = await body(request);
@@ -182,10 +182,15 @@ async function handle(request: Request, context: RouteContext): Promise<Response
       }
       if (path[1] === 'characters') {
         if (path.length === 2 && method === 'GET') return json(listCharacters(true));
-        if (path.length === 2 && method === 'POST')
-          return json(saveCharacter(null, await body(request)), 201);
-        if (path.length === 3 && method === 'PATCH')
-          return json(saveCharacter(path[2], await body(request)));
+        if ((path.length === 2 && method === 'POST') || (path.length === 3 && method === 'PATCH')) {
+          const input = await body(request, AVATAR_JSON_BYTES);
+          if (input.avatarDataUrl !== undefined)
+            rateLimit(request, 'character-avatar-upload', 10, 60 * 1000, admin.id);
+          return json(
+            await saveCharacterWithAvatar(method === 'POST' ? null : path[2], input),
+            method === 'POST' ? 201 : 200,
+          );
+        }
         if (path.length === 3 && method === 'DELETE') {
           deleteCharacter(path[2]);
           return json({ ok: true });
@@ -258,7 +263,11 @@ async function handle(request: Request, context: RouteContext): Promise<Response
     if (method === 'PATCH' && route === 'account') {
       const input = await body(request);
       const updated = await updateAccount(request, user, input);
-      return json(updated, 200, input.password !== undefined ? createSession(user.id) : undefined);
+      return json(
+        updated,
+        200,
+        input.password !== undefined ? createSession(user.id, request) : undefined,
+      );
     }
     if (method === 'GET' && route === 'quota') return json(getQuota(user.id));
     if (route === 'conversations') {

@@ -1,5 +1,6 @@
 import sharp from 'sharp';
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
+import { mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { getDb, id } from './db';
 import { AppError } from './errors';
@@ -25,11 +26,16 @@ function avatarPath(filename: string): string {
   return target;
 }
 
-/** Only a server-generated file belonging to this exact user may be removed. */
-export async function removeOwnedAvatar(userId: string, url: string): Promise<void> {
-  if (!url.startsWith('/api/avatars/')) return;
+export function isOwnedAvatar(ownerId: string, url: string): boolean {
+  if (!url.startsWith('/api/avatars/')) return false;
   const filename = url.slice('/api/avatars/'.length);
-  if (!FILE_NAME.test(filename) || !filename.startsWith(`${userId}-`)) return;
+  return FILE_NAME.test(filename) && filename.startsWith(`${ownerId}-`);
+}
+
+/** Only a server-generated file belonging to this exact account or character may be removed. */
+export async function removeOwnedAvatar(ownerId: string, url: string): Promise<void> {
+  if (!isOwnedAvatar(ownerId, url)) return;
+  const filename = url.slice('/api/avatars/'.length);
   try {
     await unlink(avatarPath(filename));
   } catch {
@@ -54,12 +60,12 @@ export async function avatarResponse(filename: string): Promise<Response> {
   }
 }
 
-export async function uploadAvatar(userId: string, input: Record<string, unknown>): Promise<User> {
-  if (Object.keys(input).some((key) => key !== 'dataUrl') || typeof input.dataUrl !== 'string')
+export async function encodeAvatarDataUrl(dataUrl: unknown): Promise<Buffer> {
+  if (typeof dataUrl !== 'string')
     throw new AppError(400, 'INVALID_AVATAR', '请提供 JPEG、PNG 或 WebP 图片。');
-  if (input.dataUrl.length > AVATAR_JSON_BYTES)
+  if (dataUrl.length > AVATAR_JSON_BYTES)
     throw new AppError(413, 'AVATAR_TOO_LARGE', '头像原图不能超过 2 MiB。');
-  const match = input.dataUrl.match(/^data:image\/(jpeg|png|webp);base64,([a-zA-Z0-9+/]+={0,2})$/);
+  const match = dataUrl.match(/^data:image\/(jpeg|png|webp);base64,([a-zA-Z0-9+/]+={0,2})$/);
   if (!match || match[2].length % 4 !== 0)
     throw new AppError(400, 'INVALID_AVATAR', '头像仅支持 JPEG、PNG 或 WebP 图片。');
   const bytes = Buffer.from(match[2], 'base64');
@@ -102,6 +108,33 @@ export async function uploadAvatar(userId: string, input: Record<string, unknown
   } catch {
     throw new AppError(400, 'INVALID_AVATAR', '图片无法解码或超过 1600 万像素，请更换图片。');
   }
+  return encoded;
+}
+
+/** Encoding happens before the short database transaction; only the small WebP is written here. */
+export function writeAvatarImage(ownerId: string, encoded: Buffer): string {
+  const filename = `${ownerId}-${id()}.webp`;
+  const path = avatarPath(filename);
+  mkdirSync(avatarDirectory(), { recursive: true });
+  try {
+    writeFileSync(path, encoded, { flag: 'wx', mode: 0o644 });
+  } catch (error) {
+    if ((error as { code?: string }).code !== 'EEXIST') {
+      try {
+        unlinkSync(path);
+      } catch {
+        /* No partial file to remove. */
+      }
+    }
+    throw error;
+  }
+  return `/api/avatars/${filename}`;
+}
+
+export async function uploadAvatar(userId: string, input: Record<string, unknown>): Promise<User> {
+  if (Object.keys(input).some((key) => key !== 'dataUrl'))
+    throw new AppError(400, 'INVALID_AVATAR', '请提供 JPEG、PNG 或 WebP 图片。');
+  const encoded = await encodeAvatarDataUrl(input.dataUrl);
   const filename = `${userId}-${id()}.webp`;
   const path = avatarPath(filename);
   const url = `/api/avatars/${filename}`;

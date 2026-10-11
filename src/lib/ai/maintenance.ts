@@ -36,12 +36,20 @@ function boundedText(text: string, bytes: number): string {
   return `${points.slice(0, lower).join('')}…`;
 }
 
-async function modelSummary(
+function boundedExcerpt(text: string, bytes: number): string {
+  if (estimateTokens(text) <= bytes) return text;
+  const marker = ' [原文过长，保留首尾] ';
+  const half = Math.floor((bytes - estimateTokens(marker)) / 2);
+  if (half < 16) return boundedText(text, Math.max(12, bytes));
+  const end = [...boundedText([...text].reverse().join(''), half)].reverse().join('');
+  return `${boundedText(text, half)}${marker}${end}`;
+}
+
+function summaryConfiguration(
   context: MaintenanceContext,
   modelId: string,
-  source: string,
   kind: 'compression' | 'memory-summary',
-): Promise<string> {
+) {
   const provider = context.resolveModel(modelId);
   const system =
     kind === 'compression'
@@ -54,9 +62,24 @@ async function modelSummary(
   );
   if (inputBudget < 256)
     throw new AppError(422, 'SUMMARY_CONTEXT', '所选总结模型的上下文容量不足。');
+  return { provider, system, maxOutput, inputBudget };
+}
+
+async function modelSummary(
+  context: MaintenanceContext,
+  modelId: string,
+  source: string,
+  kind: 'compression' | 'memory-summary',
+  configuration = summaryConfiguration(context, modelId, kind),
+): Promise<string> {
+  const { provider, system, maxOutput, inputBudget } = configuration;
+  // Callers select a complete bounded batch and advance only its cursor. Never
+  // silently cut the tail of a batch after deciding which events it contains.
+  if (estimateTokens(source) > inputBudget)
+    throw new AppError(422, 'SUMMARY_CONTEXT', '本批历史超过总结模型容量，将保留原文并稍后重试。');
   const response = await generateText(
     provider,
-    { system, messages: [{ role: 'user', content: boundedText(source, inputBudget) }], maxOutput },
+    { system, messages: [{ role: 'user', content: source }], maxOutput },
     {
       signal: context.signal,
       timeoutMs: 45_000,
@@ -85,7 +108,7 @@ async function modelSummary(
 
 /** The trigger counts actual user turns; a configured retained turn includes its following role replies. */
 export async function compressConversation(
-  context: MaintenanceContext & { assertLease: () => void },
+  context: MaintenanceContext & { assertLease: () => void; forceBoundary?: number },
 ): Promise<void> {
   const db = getDb();
   const settings = getSettings();
@@ -103,31 +126,34 @@ export async function compressConversation(
         .get(context.conversationId, boundary) as Row
     ).n,
   );
-  if (count < settings.compressionTriggerRounds) return;
+  const pressure = Number(context.forceBoundary || 0);
+  if (count < settings.compressionTriggerRounds && pressure <= boundary) return;
   const retained = db
     .query(
       "SELECT rowid AS seq FROM messages WHERE conversation_id=? AND role='user' AND rowid>? ORDER BY rowid DESC LIMIT ?",
     )
     .all(context.conversationId, boundary, settings.compressionKeepRounds) as Row[];
   const firstRetained = Number(retained.at(-1)?.seq);
-  const cutoff = Number(
-    (
-      db
-        .query(
-          'SELECT MAX(rowid) AS seq FROM messages WHERE conversation_id=? AND rowid>? AND rowid<?',
+  const roundCutoff =
+    count >= settings.compressionTriggerRounds
+      ? Number(
+          (
+            db
+              .query(
+                'SELECT MAX(rowid) AS seq FROM messages WHERE conversation_id=? AND rowid>? AND rowid<?',
+              )
+              .get(context.conversationId, boundary, firstRetained) as Row
+          ).seq,
         )
-        .get(context.conversationId, boundary, firstRetained) as Row
-    ).seq,
-  );
+      : 0;
+  const cutoff = Math.max(roundCutoff, pressure);
   if (!cutoff || cutoff <= boundary) return;
-  const sourceRows = (
-    db
-      .query(
-        "SELECT m.rowid AS seq,m.role,m.character_id,CASE WHEN length(m.content)>600 THEN substr(m.content,1,400)||' […] '||substr(m.content,-180) ELSE m.content END AS content,c.name AS character_name FROM messages m LEFT JOIN characters c ON c.id=m.character_id WHERE m.conversation_id=? AND m.rowid>? AND m.rowid<=? ORDER BY m.rowid DESC LIMIT 256",
-      )
-      .all(context.conversationId, boundary, cutoff) as Row[]
-  ).reverse();
-  const entries: HistoryEntry[] = sourceRows.map((source) => ({
+  const sourceRows = db
+    .query(
+      'SELECT m.rowid AS seq,m.role,m.character_id,m.content,c.name AS character_name FROM messages m LEFT JOIN characters c ON c.id=m.character_id WHERE m.conversation_id=? AND m.rowid>? AND m.rowid<=? ORDER BY m.rowid ASC LIMIT 256',
+    )
+    .all(context.conversationId, boundary, cutoff) as Row[];
+  let entries: HistoryEntry[] = sourceRows.map((source) => ({
     seq: Number(source.seq),
     role: source.role as HistoryEntry['role'],
     characterId: source.character_id ? String(source.character_id) : null,
@@ -138,23 +164,51 @@ export async function compressConversation(
   if (settings.compressionModelId) {
     context.status('正在按管理员配置压缩较早的对话…');
     try {
+      const configuration = summaryConfiguration(
+        context,
+        settings.compressionModelId,
+        'compression',
+      );
+      const prefix = `此前摘要：\n${boundedExcerpt(String(row.summary), Math.floor(configuration.inputBudget * 0.3))}\n\n待压缩对话原文：\n`;
+      const selected: HistoryEntry[] = [];
+      const parts: string[] = [];
+      for (const entry of entries) {
+        const speaker = boundedText(entry.speaker, 80);
+        let part = `[${speaker}] ${entry.content}`;
+        if (estimateTokens(prefix + [...parts, part].join('\n')) > configuration.inputBudget) {
+          if (selected.length) break;
+          part = `[${speaker}] ${boundedExcerpt(entry.content, configuration.inputBudget - estimateTokens(prefix) - estimateTokens(speaker) - 16)}`;
+        }
+        selected.push(entry);
+        parts.push(part);
+      }
       summary = await modelSummary(
         context,
         settings.compressionModelId,
-        `此前摘要：\n${String(row.summary)}\n\n待压缩对话原文摘录：\n${entries.map((entry) => `[${entry.speaker}] ${entry.content}`).join('\n')}`,
+        prefix + parts.join('\n'),
         'compression',
+        configuration,
       );
+      entries = selected;
     } catch (error) {
       if (context.signal?.aborted) throw error;
       context.status('配置的压缩模型暂不可用，本轮已改用本地原文摘录；原始消息完整保留。');
     }
   }
+  const appliedCutoff = entries.at(-1)?.seq;
+  if (!appliedCutoff) return;
   context.assertLease();
+  if (getSettings().compressionModelId !== settings.compressionModelId) {
+    context.status('上下文摘要模型已变更，本次摘要未保存，原始历史将在后续对话中重新处理。');
+    return;
+  }
   db.query(
     'UPDATE conversations SET summary=?,summary_boundary=? WHERE id=? AND user_id=? AND summary_boundary=?',
-  ).run(summary, cutoff, context.conversationId, context.user.id, boundary);
+  ).run(summary, appliedCutoff, context.conversationId, context.user.id, boundary);
   context.status(
-    `较早对话已整理为摘要，最近 ${settings.compressionKeepRounds} 轮用户对话继续保留；原始记录未删除。`,
+    pressure > boundary || appliedCutoff < cutoff
+      ? '已整理部分较早对话，后续会继续处理剩余历史；原始记录未删除。'
+      : `较早对话已整理为摘要，最近 ${settings.compressionKeepRounds} 轮用户对话继续保留；原始记录未删除。`,
   );
 }
 
@@ -173,13 +227,14 @@ function collectEpisodes(
   characterId: string,
   after: number,
   interval: number,
+  through = Number.MAX_SAFE_INTEGER,
 ): Episode[] {
   const db = getDb();
   const rows = db
     .query(
-      "SELECT e.seq,m.id,m.content,m.conversation_id,(SELECT u.id FROM messages u WHERE u.conversation_id=m.conversation_id AND u.role='user' AND u.rowid<m.rowid ORDER BY u.rowid DESC LIMIT 1) AS user_message_id FROM memory_summary_events e JOIN messages m ON m.id=e.message_id JOIN conversations c ON c.id=m.conversation_id WHERE e.user_id=? AND e.character_id=? AND c.user_id=? AND m.character_id=? AND e.seq>? AND EXISTS(SELECT 1 FROM messages u WHERE u.conversation_id=m.conversation_id AND u.role='user' AND u.rowid<m.rowid) ORDER BY e.seq ASC LIMIT ?",
+      "SELECT e.seq,m.id,m.content,m.conversation_id,(SELECT u.id FROM messages u WHERE u.conversation_id=m.conversation_id AND u.role='user' AND u.rowid<m.rowid ORDER BY u.rowid DESC LIMIT 1) AS user_message_id FROM memory_summary_events e JOIN messages m ON m.id=e.message_id JOIN conversations c ON c.id=m.conversation_id WHERE e.user_id=? AND e.character_id=? AND c.user_id=? AND m.character_id=? AND e.seq>? AND e.seq<=? AND EXISTS(SELECT 1 FROM messages u WHERE u.conversation_id=m.conversation_id AND u.role='user' AND u.rowid<m.rowid) ORDER BY e.seq ASC LIMIT ?",
     )
-    .all(userId, characterId, userId, characterId, after, interval) as Row[];
+    .all(userId, characterId, userId, characterId, after, through, interval) as Row[];
   return rows.map((row) => ({
     seq: Number(row.seq),
     messageId: String(row.id),
@@ -211,29 +266,46 @@ export async function summarizeMemories(context: MaintenanceContext): Promise<st
         (row.retry_after && String(row.retry_after) > now())
       )
         return null;
-      const episodes = collectEpisodes(
-        context.user.id,
-        context.characterId,
-        Number(row.last_event_seq),
-        settings.memorySummaryInterval,
-      );
-      if (episodes.length < settings.memorySummaryInterval) return null;
+      let through = Number(row.pending_through_seq);
+      const after = Number(row.last_event_seq);
+      let episodes =
+        through > after
+          ? collectEpisodes(context.user.id, context.characterId, after, 100, through)
+          : [];
+      if (!episodes.length) {
+        // A deleted source can leave an empty unfinished batch. Clear only that
+        // batch marker; newly added events still use the current interval.
+        through = 0;
+        db.query(
+          'UPDATE memory_summary_state SET pending_through_seq=0 WHERE user_id=? AND character_id=?',
+        ).run(context.user.id, context.characterId);
+        episodes = collectEpisodes(
+          context.user.id,
+          context.characterId,
+          after,
+          settings.memorySummaryInterval,
+        );
+        if (episodes.length < settings.memorySummaryInterval) return null;
+        through = episodes.at(-1)!.seq;
+      }
       db.query(
-        'UPDATE memory_summary_state SET lock_token=?,lock_expires_at=?,updated_at=? WHERE user_id=? AND character_id=?',
+        'UPDATE memory_summary_state SET pending_through_seq=?,lock_token=?,lock_expires_at=?,updated_at=? WHERE user_id=? AND character_id=?',
       ).run(
+        through,
         token,
         new Date(Date.now() + 180_000).toISOString(),
         now(),
         context.user.id,
         context.characterId,
       );
-      return episodes;
+      return { episodes, through };
     })
     .immediate();
   if (!claim) return null;
   try {
-    const perEpisode = Math.max(32, Math.floor(4000 / claim.length));
-    const local = claim
+    let summarized = claim.episodes;
+    const perEpisode = Math.max(32, Math.floor(4000 / claim.episodes.length));
+    const local = claim.episodes
       .map(
         (episode) =>
           `用户：${boundedText(episode.userContent, Math.floor(perEpisode / 2))}\n角色：${boundedText(episode.assistantContent, Math.floor(perEpisode / 2))}`,
@@ -241,24 +313,37 @@ export async function summarizeMemories(context: MaintenanceContext): Promise<st
       .join('\n');
     let summary: string;
     if (settings.memorySummaryModelId) {
-      context.status(`正在总结最近 ${claim.length} 轮对话，保存长期记忆…`);
-      const source = claim
-        .map(
-          (episode) =>
-            `用户：${boundedText(episode.userContent, 1500)}\n角色：${boundedText(episode.assistantContent, 1500)}`,
-        )
-        .join('\n\n');
+      const configuration = summaryConfiguration(
+        context,
+        settings.memorySummaryModelId,
+        'memory-summary',
+      );
+      const prefix = '角色扮演对话原文：\n';
+      const parts: string[] = [];
+      summarized = [];
+      for (const episode of claim.episodes) {
+        let part = `用户：${episode.userContent}\n角色：${episode.assistantContent}`;
+        if (estimateTokens(prefix + [...parts, part].join('\n\n')) > configuration.inputBudget) {
+          if (summarized.length) break;
+          const half = Math.floor((configuration.inputBudget - estimateTokens(prefix) - 100) / 2);
+          part = `用户：${boundedExcerpt(episode.userContent, half)}\n角色：${boundedExcerpt(episode.assistantContent, half)}`;
+        }
+        summarized.push(episode);
+        parts.push(part);
+      }
+      context.status(`正在总结 ${summarized.length} 轮对话，保存长期记忆…`);
       summary = await modelSummary(
         context,
         settings.memorySummaryModelId,
-        `角色扮演对话原文摘录：\n${source}`,
+        prefix + parts.join('\n\n'),
         'memory-summary',
+        configuration,
       );
     } else
       summary = boundedText(local, 4200)
         .slice(0, 1800)
         .replace(/[\uD800-\uDBFF]$/, '');
-    const memoryId = db
+    const saved = db
       .transaction(() => {
         const lease = db
           .query(
@@ -283,7 +368,7 @@ export async function summarizeMemories(context: MaintenanceContext): Promise<st
           context.signal?.aborted
         )
           throw new AppError(409, 'MEMORY_SUMMARY_INTERRUPTED', '记忆总结已暂停，稍后会继续处理。');
-        for (const episode of claim) {
+        for (const episode of summarized) {
           const assistant = db
             .query('SELECT content FROM messages WHERE id=?')
             .get(episode.messageId) as Row | null;
@@ -303,7 +388,7 @@ export async function summarizeMemories(context: MaintenanceContext): Promise<st
               '原始对话已变化，记忆总结将在后续对话中重新处理。',
             );
         }
-        const sourceId = `summary:${claim.at(-1)!.messageId}`;
+        const sourceId = `summary:${summarized.at(-1)!.messageId}`;
         const existing = db
           .query(
             'SELECT id FROM memories WHERE user_id=? AND character_id=? AND source_message_id=?',
@@ -318,19 +403,32 @@ export async function summarizeMemories(context: MaintenanceContext): Promise<st
             result,
             context.user.id,
             context.characterId,
-            `对话经历总结（${claim.length} 轮，${timestamp.slice(0, 10)}；角色扮演资料）\n${summary}`,
+            `对话经历总结（${summarized.length} 轮，${timestamp.slice(0, 10)}；角色扮演资料）\n${summary}`,
             sourceId,
             timestamp,
             timestamp,
           );
+        const lastSeq = summarized.at(-1)!.seq;
+        const remaining =
+          collectEpisodes(context.user.id, context.characterId, lastSeq, 1, claim.through).length >
+          0;
         db.query(
-          'UPDATE memory_summary_state SET last_event_seq=?,lock_token=NULL,lock_expires_at=NULL,retry_after=NULL,updated_at=? WHERE user_id=? AND character_id=? AND lock_token=?',
-        ).run(claim.at(-1)!.seq, timestamp, context.user.id, context.characterId, token);
-        return result;
+          'UPDATE memory_summary_state SET last_event_seq=?,pending_through_seq=?,lock_token=NULL,lock_expires_at=NULL,retry_after=NULL,updated_at=? WHERE user_id=? AND character_id=? AND lock_token=?',
+        ).run(
+          lastSeq,
+          remaining ? claim.through : 0,
+          timestamp,
+          context.user.id,
+          context.characterId,
+          token,
+        );
+        return { id: result, remaining };
       })
       .immediate();
-    context.status(`已将 ${claim.length} 轮对话保存为一条长期记忆。`);
-    return memoryId;
+    context.status(
+      `已将 ${summarized.length} 轮对话保存为一条长期记忆。${saved.remaining ? '本批剩余对话保留在待总结队列，后续回复会继续处理。' : ''}`,
+    );
+    return saved.id;
   } catch {
     db.query(
       'UPDATE memory_summary_state SET retry_after=?,updated_at=? WHERE user_id=? AND character_id=? AND lock_token=?',

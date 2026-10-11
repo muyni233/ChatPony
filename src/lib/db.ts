@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
-const SCHEMA_VERSION = 10;
+const SCHEMA_VERSION = 11;
 const globalDb = globalThis as typeof globalThis & {
   __chatponyDb?: Database;
   __chatponyDbPath?: string;
@@ -137,7 +137,8 @@ export function getDb(): Database {
     CREATE TABLE IF NOT EXISTS memory_summary_state (
       user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       character_id TEXT NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
-      last_event_seq INTEGER NOT NULL DEFAULT 0, lock_token TEXT, lock_expires_at TEXT,
+      last_event_seq INTEGER NOT NULL DEFAULT 0, pending_through_seq INTEGER NOT NULL DEFAULT 0,
+      lock_token TEXT, lock_expires_at TEXT,
       retry_after TEXT, updated_at TEXT NOT NULL, PRIMARY KEY(user_id,character_id)
     );
     CREATE TABLE IF NOT EXISTS api_calls (
@@ -174,6 +175,13 @@ export function getDb(): Database {
     const memoryColumns = db.query('PRAGMA table_info(memories)').all() as { name: string }[];
     if (!memoryColumns.some((column) => column.name === 'source_message_id'))
       db.exec('ALTER TABLE memories ADD COLUMN source_message_id TEXT');
+    const memoryStateColumns = db.query('PRAGMA table_info(memory_summary_state)').all() as {
+      name: string;
+    }[];
+    if (!memoryStateColumns.some((column) => column.name === 'pending_through_seq'))
+      db.exec(
+        'ALTER TABLE memory_summary_state ADD COLUMN pending_through_seq INTEGER NOT NULL DEFAULT 0',
+      );
     db.exec(
       'CREATE UNIQUE INDEX IF NOT EXISTS memories_source_message ON memories(user_id,character_id,source_message_id) WHERE source_message_id IS NOT NULL',
     );
@@ -363,7 +371,7 @@ export function getDb(): Database {
         }
       }
     }
-    db.exec('PRAGMA user_version=10');
+    db.exec('PRAGMA user_version=11');
   }).immediate();
   globalDb.__chatponyDb = db;
   globalDb.__chatponyDbPath = path;

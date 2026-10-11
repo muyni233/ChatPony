@@ -5,13 +5,19 @@ import { chatResponse } from '../../src/lib/chat';
 import { toUser, toProvider, type Row } from '../../src/lib/mappers';
 import { getQuota } from '../../src/lib/quota';
 import { listAudit } from '../../src/lib/audit';
-import { registerMemoryReply, summarizeMemories } from '../../src/lib/ai/maintenance';
+import {
+  compressConversation,
+  registerMemoryReply,
+  summarizeMemories,
+} from '../../src/lib/ai/maintenance';
 import type { ChatEvent } from '../../src/lib/types';
 
 const db = getDb();
 const models: string[] = [];
+const summaryInputs: { model: string; content: string }[] = [];
 let summaryMode: 'normal' | 'fail' | 'hold' = 'normal';
 let compressionFails = false;
+let compressionHolds = false;
 let release: (() => void) | undefined;
 const server = Bun.serve({
   port: 0,
@@ -22,8 +28,14 @@ const server = Bun.serve({
       messages: { content: string }[];
     };
     models.push(input.model);
+    if (input.model === 'compressor' || input.model === 'summarizer')
+      summaryInputs.push({ model: input.model, content: input.messages.at(-1)?.content || '' });
     if (input.model === 'compressor' && compressionFails)
       return new Response('failure', { status: 400 });
+    if (input.model === 'compressor' && compressionHolds)
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
     if (input.model === 'summarizer') {
       assert.equal(input.reasoning_effort, 'low');
       if (summaryMode === 'fail') return new Response('failure', { status: 400 });
@@ -244,7 +256,7 @@ try {
     ) > Number(cursorBefore),
   );
 
-  // Disable skips automatic episodes entirely, but explicit user facts still save immediately.
+  // Disabling automatic memory also skips the immediate explicit-fact extractor.
   setting('automaticMemoryEnabled', false);
   const beforeDisabled = countMemories();
   const eventsBefore = (db.query('SELECT COUNT(*) AS n FROM memory_summary_events').get() as Row).n;
@@ -254,10 +266,11 @@ try {
     (db.query('SELECT COUNT(*) AS n FROM memory_summary_events').get() as Row).n,
     eventsBefore,
   );
-  assert.ok(
+  assert.equal(
     db
       .query("SELECT id FROM memories WHERE user_id=? AND character_id=? AND content='我喜欢苹果'")
       .get(userId, alpha),
+    null,
   );
   setting('automaticMemoryEnabled', true);
   setting('compressionModelId', '');
@@ -327,8 +340,334 @@ try {
     .get(userId, beta) as Row;
   assert.ok(String(local.content).includes('用户原文'));
   assert.ok(String(local.content).includes('角色原文'));
+
+  // Capacity pressure must use the selected model even before the round trigger.
+  // The model sees the middle of full messages, which the old excerpt-only path lost.
+  setting('compressionTriggerRounds', 24);
+  setting('compressionKeepRounds', 8);
+  setting('compressionModelId', compressionModel);
+  setting('automaticMemoryEnabled', false);
+  compressionFails = false;
+  const pressureConversation = conversation();
+  const marker = 'IMPORTANT_AGREEMENT_MOON_LAKE';
+  const oldIds: string[] = [];
+  for (let index = 0; index < 8; index++) {
+    const messageId = id();
+    oldIds.push(messageId);
+    db.query(
+      "INSERT INTO messages(id,conversation_id,role,content,created_at) VALUES(?,?,'user',?,?)",
+    ).run(
+      messageId,
+      pressureConversation,
+      '前'.repeat(300) + (index === 0 ? marker : '') + '后'.repeat(300),
+      now(),
+    );
+    db.query(
+      "INSERT INTO messages(id,conversation_id,role,character_id,content,created_at) VALUES(?,?,'assistant',?,?,?)",
+    ).run(id(), pressureConversation, alpha, '答'.repeat(600), now());
+  }
+  const compressionBefore = models.filter((name) => name === 'compressor').length;
+  const quotaBeforePressure = getQuota(userId).fiveHour.used;
+  const pressureEvents = await send(pressureConversation, '继续这个故事。');
+  assert.equal(models.filter((name) => name === 'compressor').length, compressionBefore + 1);
+  assert.ok(
+    summaryInputs
+      .filter((input) => input.model === 'compressor')
+      .at(-1)!
+      .content.includes(marker),
+  );
+  const pressureState = db
+    .query('SELECT summary,summary_boundary FROM conversations WHERE id=?')
+    .get(pressureConversation) as Row;
+  assert.ok(String(pressureState.summary).includes('管理员指定模型'));
+  assert.ok(
+    pressureEvents.some((event) => event.type === 'status' && event.text.includes('原文截取')),
+  );
+  assert.equal(getQuota(userId).fiveHour.used, quotaBeforePressure + 1);
+  await send(pressureConversation, '后续继续。');
+  assert.equal(models.filter((name) => name === 'compressor').length, compressionBefore + 2);
+  assert.ok(
+    Number(
+      (
+        db
+          .query('SELECT summary_boundary FROM conversations WHERE id=?')
+          .get(pressureConversation) as Row
+      ).summary_boundary,
+    ) > Number(pressureState.summary_boundary),
+  );
+
+  // Summaries advance only through complete episodes actually sent to the model.
+  // A small summary window cannot consume a large interval by clipping its tail.
+  setting('automaticMemoryEnabled', true);
+  setting('memorySummaryModelId', summaryModel);
+  setting('memorySummaryInterval', 20);
+  const gamma = character('gamma');
+  const largeMemoryConversation = conversation(gamma);
+  const episodeIds: string[] = [];
+  const addLargeEpisode = (index: number) => {
+    const pair = addEvent(largeMemoryConversation, gamma);
+    episodeIds.push(pair.messageId);
+    db.query('UPDATE messages SET content=? WHERE id=?').run(
+      `EPISODE_${index}_USER ` + '用'.repeat(600),
+      pair.userMessage,
+    );
+    db.query('UPDATE messages SET content=? WHERE id=?').run(
+      `EPISODE_${index}_ASSISTANT ` + '答'.repeat(600),
+      pair.messageId,
+    );
+    return pair;
+  };
+  for (let index = 0; index < 20; index++) addLargeEpisode(index);
+  const memoryContext = { ...context(largeMemoryConversation), characterId: gamma };
+  const largeId = await summarizeMemories(memoryContext);
+  assert.ok(largeId);
+  const sentSource = summaryInputs.filter((input) => input.model === 'summarizer').at(-1)!.content;
+  assert.ok(sentSource.includes('EPISODE_0_USER'));
+  assert.ok(sentSource.includes('EPISODE_0_ASSISTANT'));
+  assert.ok(!sentSource.includes('EPISODE_1_USER'));
+  const firstEvent = db
+    .query('SELECT seq FROM memory_summary_events WHERE message_id=?')
+    .get(episodeIds[0]) as Row;
+  assert.equal(
+    (
+      db
+        .query('SELECT last_event_seq FROM memory_summary_state WHERE user_id=? AND character_id=?')
+        .get(userId, gamma) as Row
+    ).last_event_seq,
+    firstEvent.seq,
+  );
+  assert.ok(
+    String(
+      (db.query('SELECT content FROM memories WHERE id=?').get(largeId) as Row).content,
+    ).includes('1 轮'),
+  );
+  const batchThrough = Number(
+    (
+      db
+        .query('SELECT seq FROM memory_summary_events WHERE message_id=?')
+        .get(episodeIds[19]) as Row
+    ).seq,
+  );
+  assert.equal(
+    (
+      db
+        .query(
+          'SELECT pending_through_seq FROM memory_summary_state WHERE user_id=? AND character_id=?',
+        )
+        .get(userId, gamma) as Row
+    ).pending_through_seq,
+    batchThrough,
+  );
+  // Raising the interval applies to the next batch, without trapping this one's
+  // remaining 19 episodes below the new threshold.
+  setting('memorySummaryInterval', 100);
+  assert.ok(await summarizeMemories(memoryContext));
+  assert.ok(
+    summaryInputs
+      .filter((input) => input.model === 'summarizer')
+      .at(-1)!
+      .content.includes('EPISODE_1_USER'),
+  );
+  assert.equal(
+    (
+      db
+        .query('SELECT last_event_seq FROM memory_summary_state WHERE user_id=? AND character_id=?')
+        .get(userId, gamma) as Row
+    ).last_event_seq,
+    (db.query('SELECT seq FROM memory_summary_events WHERE message_id=?').get(episodeIds[1]) as Row)
+      .seq,
+  );
+
+  setting('automaticMemoryEnabled', false);
+  const pausedCalls = models.length;
+  assert.equal(await summarizeMemories(memoryContext), null);
+  assert.equal(models.length, pausedCalls);
+  assert.equal(
+    (
+      db
+        .query(
+          'SELECT pending_through_seq FROM memory_summary_state WHERE user_id=? AND character_id=?',
+        )
+        .get(userId, gamma) as Row
+    ).pending_through_seq,
+    batchThrough,
+  );
+  setting('automaticMemoryEnabled', true);
+  setting('memorySummaryInterval', 1);
+  addLargeEpisode(20);
+  // Deletions within a pending batch do not pull newer events into that batch.
+  for (const messageId of episodeIds.slice(2, 19))
+    db.query('DELETE FROM messages WHERE id=?').run(messageId);
+  assert.ok(await summarizeMemories(memoryContext));
+  const tailSource = summaryInputs.filter((input) => input.model === 'summarizer').at(-1)!.content;
+  assert.ok(tailSource.includes('EPISODE_19_USER'));
+  assert.ok(!tailSource.includes('EPISODE_20_USER'));
+  assert.equal(
+    (
+      db
+        .query(
+          'SELECT pending_through_seq FROM memory_summary_state WHERE user_id=? AND character_id=?',
+        )
+        .get(userId, gamma) as Row
+    ).pending_through_seq,
+    0,
+  );
+  setting('memorySummaryInterval', 2);
+  assert.equal(await summarizeMemories(memoryContext), null);
+  addLargeEpisode(21);
+  assert.ok(await summarizeMemories(memoryContext));
+  db.query('DELETE FROM messages WHERE id=?').run(episodeIds[21]);
+  addLargeEpisode(22);
+  assert.equal(await summarizeMemories(memoryContext), null);
+  assert.equal(
+    (
+      db
+        .query(
+          'SELECT pending_through_seq FROM memory_summary_state WHERE user_id=? AND character_id=?',
+        )
+        .get(userId, gamma) as Row
+    ).pending_through_seq,
+    0,
+  );
+
+  // One oversized episode must not block every later memory. Its bounded excerpt
+  // includes both speakers and both ends, with an explicit omission marker.
+  setting('memorySummaryInterval', 1);
+  const delta = character('delta');
+  const oversizedConversation = conversation(delta);
+  const oversizedPair = addEvent(oversizedConversation, delta);
+  db.query('UPDATE messages SET content=? WHERE id=?').run(
+    'USER_START ' + '长'.repeat(20_000) + ' USER_END',
+    oversizedPair.userMessage,
+  );
+  db.query('UPDATE messages SET content=? WHERE id=?').run(
+    'ASSISTANT_START ' + '长'.repeat(40_000) + ' ASSISTANT_END',
+    oversizedPair.messageId,
+  );
+  assert.ok(await summarizeMemories({ ...context(oversizedConversation), characterId: delta }));
+  const oversizedSource = summaryInputs
+    .filter((input) => input.model === 'summarizer')
+    .at(-1)!.content;
+  for (const fragment of ['USER_START', 'USER_END', 'ASSISTANT_START', 'ASSISTANT_END', '原文过长'])
+    assert.ok(oversizedSource.includes(fragment));
+
+  // Changing the selected compressor during a request discards the old result;
+  // losing a lease must likewise leave the durable cursor untouched.
+  const stateBeforeChange = db
+    .query('SELECT summary,summary_boundary FROM conversations WHERE id=?')
+    .get(pressureConversation);
+  const cutoff =
+    Number(
+      (
+        db
+          .query('SELECT MAX(rowid) AS seq FROM messages WHERE conversation_id=?')
+          .get(pressureConversation) as Row
+      ).seq,
+    ) - 1;
+  const compressionContext = {
+    ...context(pressureConversation),
+    characterId: alpha,
+    forceBoundary: cutoff,
+  };
+  compressionHolds = true;
+  release = undefined;
+  const changing = compressConversation({ ...compressionContext, assertLease: () => {} });
+  await waitHold();
+  setting('compressionModelId', '');
+  release!();
+  await changing;
+  assert.deepEqual(
+    db
+      .query('SELECT summary,summary_boundary FROM conversations WHERE id=?')
+      .get(pressureConversation),
+    stateBeforeChange,
+  );
+  setting('compressionModelId', compressionModel);
+  let leaseLive = true;
+  release = undefined;
+  const losingLease = compressConversation({
+    ...compressionContext,
+    assertLease: () => {
+      if (!leaseLive) throw new Error('TEST_LEASE_LOST');
+    },
+  });
+  await waitHold();
+  leaseLive = false;
+  release!();
+  await assert.rejects(losingLease, /TEST_LEASE_LOST/);
+  assert.deepEqual(
+    db
+      .query('SELECT summary,summary_boundary FROM conversations WHERE id=?')
+      .get(pressureConversation),
+    stateBeforeChange,
+  );
+  compressionHolds = false;
+
+  // Cancelled requests and disabled summary models never consume memory events.
+  const epsilon = character('epsilon');
+  const interruptedConversation = conversation(epsilon);
+  const interruptedPair = addEvent(interruptedConversation, epsilon);
+  const interruptContext = { ...context(interruptedConversation), characterId: epsilon };
+  const abortSummary = new AbortController();
+  summaryMode = 'hold';
+  release = undefined;
+  const cancelling = summarizeMemories({ ...interruptContext, signal: abortSummary.signal });
+  await waitHold();
+  abortSummary.abort();
+  release!();
+  assert.equal(await cancelling, null);
+  assert.equal(
+    (
+      db
+        .query('SELECT last_event_seq FROM memory_summary_state WHERE user_id=? AND character_id=?')
+        .get(userId, epsilon) as Row
+    ).last_event_seq,
+    0,
+  );
+  db.query(
+    'UPDATE memory_summary_state SET retry_after=NULL WHERE user_id=? AND character_id=?',
+  ).run(userId, epsilon);
+  let modelActive = true;
+  release = undefined;
+  const disabling = summarizeMemories({
+    ...interruptContext,
+    resolveModel: (modelId) => {
+      if (!modelActive) throw new Error('Summary model disabled');
+      return resolveModel(modelId);
+    },
+  });
+  await waitHold();
+  modelActive = false;
+  release!();
+  assert.equal(await disabling, null);
+  assert.equal(
+    (
+      db
+        .query('SELECT last_event_seq FROM memory_summary_state WHERE user_id=? AND character_id=?')
+        .get(userId, epsilon) as Row
+    ).last_event_seq,
+    0,
+  );
+  assert.equal(countMemories(epsilon), 0);
+  summaryMode = 'normal';
+  db.query(
+    'UPDATE memory_summary_state SET retry_after=NULL WHERE user_id=? AND character_id=?',
+  ).run(userId, epsilon);
+  assert.ok(await summarizeMemories(interruptContext));
+  assert.equal(
+    (
+      db
+        .query('SELECT last_event_seq FROM memory_summary_state WHERE user_id=? AND character_id=?')
+        .get(userId, epsilon) as Row
+    ).last_event_seq,
+    (
+      db
+        .query('SELECT seq FROM memory_summary_events WHERE message_id=?')
+        .get(interruptedPair.messageId) as Row
+    ).seq,
+  );
   console.log(
-    'MAINTENANCE_INTEGRATION_OK: round trigger/keep, selected models, audit kinds, cross-conversation intervals, quota, fallback, cooldown, optout, lease, source deletion, local summaries',
+    'MAINTENANCE_INTEGRATION_OK: round and capacity triggers, selected models, complete bounded episodes, audit kinds, cross-conversation intervals, quota, fallback, cooldown, optout, lease, source deletion, local summaries',
   );
 } finally {
   release?.();

@@ -50,12 +50,18 @@ export function requireAdmin(request: Request): User {
   return user;
 }
 
-function cookie(value: string, maxAge: number): string {
-  const secure = process.env.NODE_ENV === 'production';
+function cookie(value: string, maxAge: number, request?: Request): string {
+  // HTTPS cookies follow the actual transport, including explicitly trusted TLS proxies.
+  // NODE_ENV describes the build, not whether a browser is visiting this site over TLS.
+  const secure = request
+    ? new URL(request.url).protocol === 'https:' ||
+      (process.env.TRUST_PROXY === 'true' &&
+        request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim().toLowerCase() === 'https')
+    : false;
   return `${SESSION_COOKIE}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure ? '; Secure' : ''}`;
 }
 
-export function createSession(userId: string): string {
+export function createSession(userId: string, request?: Request): string {
   const token = randomBytes(32).toString('base64url');
   const timestamp = now();
   const db = getDb();
@@ -73,13 +79,13 @@ export function createSession(userId: string): string {
       new Date(Date.parse(timestamp) + SESSION_AGE * 1000).toISOString(),
     );
   }).immediate();
-  return cookie(token, SESSION_AGE);
+  return cookie(token, SESSION_AGE, request);
 }
 
 export function destroySession(request: Request): string {
   const token = tokenFrom(request);
   if (token) getDb().query('DELETE FROM sessions WHERE token_hash=?').run(digest(token));
-  return cookie('', 0);
+  return cookie('', 0, request);
 }
 
 export function revokeSessions(userId: string): void {
@@ -225,7 +231,7 @@ export async function login(
         .get(String(row.id)) as Row | null;
       if (!fresh || fresh.disabled || fresh.password_hash !== hash)
         throw new AppError(401, 'INVALID_CREDENTIALS', '邮箱或密码不正确，或账号当前不可用。');
-      return { user: toUser(fresh), sessionCookie: createSession(String(fresh.id)) };
+      return { user: toUser(fresh), sessionCookie: createSession(String(fresh.id), request) };
     })
     .immediate();
 }

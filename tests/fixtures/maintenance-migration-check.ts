@@ -1,7 +1,8 @@
 import { strict as assert } from 'node:assert';
 import { join } from 'node:path';
 import { getDb, closeDb, now } from '../../src/lib/db';
-import type { Row } from '../../src/lib/mappers';
+import { toUser, type Row } from '../../src/lib/mappers';
+import { summarizeMemories } from '../../src/lib/ai/maintenance';
 
 const directory = process.env.CHATPONY_TEST_DIR;
 assert.ok(directory);
@@ -139,7 +140,62 @@ try {
     cursor,
   );
   assert.deepEqual(db.query('PRAGMA foreign_key_check').all(), []);
+  // A version-10 database receives only an additive pending-batch column.
+  // Existing memory cursors and message/event sequences must remain untouched.
+  db.exec(
+    'ALTER TABLE memory_summary_state DROP COLUMN pending_through_seq; PRAGMA user_version=10;',
+  );
   closeDb();
+  const migrated = getDb();
+  assert.equal((migrated.query('PRAGMA user_version').get() as Row).user_version, 11);
+  assert.deepEqual(
+    migrated
+      .query(
+        "SELECT last_event_seq,pending_through_seq FROM memory_summary_state WHERE user_id='user' AND character_id='character'",
+      )
+      .get(),
+    { last_event_seq: cursor, pending_through_seq: 0 },
+  );
+  migrated.query("UPDATE settings SET value='100' WHERE key='memorySummaryInterval'").run();
+  migrated
+    .query(
+      "UPDATE memory_summary_state SET pending_through_seq=?,lock_token='interrupted-process',lock_expires_at=? WHERE user_id='user' AND character_id='character'",
+    )
+    .run(Number(event.seq), '2000-01-01T00:00:00.000Z');
+  closeDb();
+  // After a restart and expired lease, one remaining event resumes even though
+  // it is below the newly configured interval of 100.
+  const restarted = getDb();
+  assert.equal(
+    (
+      restarted
+        .query(
+          "SELECT pending_through_seq FROM memory_summary_state WHERE user_id='user' AND character_id='character'",
+        )
+        .get() as Row
+    ).pending_through_seq,
+    event.seq,
+  );
+  assert.ok(
+    await summarizeMemories({
+      user: toUser(restarted.query("SELECT * FROM users WHERE id='user'").get() as Row),
+      characterId: 'character',
+      conversationId: 'conversation-one',
+      requestId: 'restart-summary',
+      resolveModel: () => {
+        throw new Error('Local summaries must not request a provider');
+      },
+      status: () => {},
+    }),
+  );
+  assert.deepEqual(
+    restarted
+      .query(
+        "SELECT last_event_seq,pending_through_seq,lock_token FROM memory_summary_state WHERE user_id='user' AND character_id='character'",
+      )
+      .get(),
+    { last_event_seq: event.seq, pending_through_seq: 0, lock_token: null },
+  );
   assert.equal(
     (getDb().query('SELECT COUNT(*) AS count FROM memory_summary_events').get() as Row).count,
     2,

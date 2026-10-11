@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type ChangeEvent,
   type FormEvent,
   type ReactNode,
 } from 'react';
@@ -17,6 +18,7 @@ import {
   ArrowUpRight,
   BookOpen,
   Building2,
+  Camera,
   Check,
   ChevronRight,
   Clock3,
@@ -579,20 +581,20 @@ export function AdminPanel() {
                   <span className="admin-eyebrow">PLATFORM RULES</span>
                   <h3>调用与响应规则</h3>
                   <p>
-                    查看新用户的默认调用限额，
+                    查看全体用户的统一调用限额，
                     <br />
                     以及群聊的响应轮数上限。
                   </p>
                   <dl>
                     <div>
-                      <dt>新用户 · 5 小时限额</dt>
+                      <dt>全局 · 5 小时限额</dt>
                       <dd>
                         {amount(data.settings.defaultLimit5h)}
                         <small> 次</small>
                       </dd>
                     </div>
                     <div>
-                      <dt>新用户 · 7 天限额</dt>
+                      <dt>全局 · 7 天限额</dt>
                       <dd>
                         {amount(data.settings.defaultLimit7d)}
                         <small> 次</small>
@@ -1392,13 +1394,52 @@ function CharacterEditor({
     active: item?.active ?? false,
   });
   const [tags, setTags] = useState(item?.tags.join('，') ?? '');
+  const [avatarDataUrl, setAvatarDataUrl] = useState<string | null>(null);
+  const [avatarFilename, setAvatarFilename] = useState('');
+  const [readingAvatar, setReadingAvatar] = useState(false);
+  const avatarInput = useRef<HTMLInputElement>(null);
+  const persistedId = useRef(item?.id);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
   const field = (key: keyof typeof draft, value: string | boolean) =>
     setDraft((previous) => ({ ...previous, [key]: value }));
+  async function selectAvatar(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || pending || readingAvatar) return;
+    setError('');
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setError('角色头像仅支持 JPG、PNG 或 WebP 图片。');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setError('头像原图不能超过 2 MiB，请选择较小的图片。');
+      return;
+    }
+    setReadingAvatar(true);
+    try {
+      const value = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error('无法读取图片，请重新选择。'));
+        reader.readAsDataURL(file);
+      });
+      setAvatarDataUrl(value);
+      setAvatarFilename(file.name);
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setReadingAvatar(false);
+    }
+  }
+  function clearAvatar() {
+    setAvatarDataUrl(null);
+    setAvatarFilename('');
+    field('avatar', '');
+  }
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (pending) return;
+    if (pending || readingAvatar) return;
     setError('');
     const tagList = [
       ...new Set(
@@ -1425,17 +1466,24 @@ function CharacterEditor({
     }
     setPending(true);
     try {
-      await api(
-        item ? `/api/admin/characters/${item.id}` : '/api/admin/characters',
-        json(item ? 'PATCH' : 'POST', {
+      const saved = await api<Character>(
+        persistedId.current
+          ? `/api/admin/characters/${persistedId.current}`
+          : '/api/admin/characters',
+        json(persistedId.current ? 'PATCH' : 'POST', {
           ...draft,
           name: draft.name.trim(),
           slug: draft.slug.trim(),
           personality: draft.personality.trim(),
           tags: tagList,
           providerId: draft.providerId || null,
+          ...(avatarDataUrl ? { avatarDataUrl } : {}),
         }),
       );
+      persistedId.current = saved.id;
+      setAvatarDataUrl(null);
+      setAvatarFilename('');
+      field('avatar', saved.avatar);
       await onSaved();
     } catch (reason) {
       setError(errorMessage(reason));
@@ -1444,8 +1492,64 @@ function CharacterEditor({
     }
   }
   return (
-    <form className="admin-form" onSubmit={submit}>
+    <form className="admin-form" onSubmit={submit} aria-busy={pending || readingAvatar}>
       <ErrorNote error={error} />
+      <div className="admin-character-avatar-editor">
+        <span className="admin-avatar-preview" style={{ backgroundColor: draft.color }}>
+          <span>{draft.name.slice(0, 1) || <Camera size={27} />}</span>
+          {(avatarDataUrl || draft.avatar) && (
+            <img
+              key={avatarDataUrl || draft.avatar}
+              src={avatarDataUrl || draft.avatar}
+              alt="角色头像预览"
+              referrerPolicy="no-referrer"
+              onError={(event) => {
+                event.currentTarget.style.display = 'none';
+              }}
+            />
+          )}
+        </span>
+        <div className="admin-avatar-editor-content">
+          <strong>角色头像</strong>
+          <p>
+            {avatarFilename
+              ? `${avatarFilename} · 保存角色后生效`
+              : '支持 JPG、PNG、WebP，最大 2 MiB。上传后自动裁切为正方形。'}
+          </p>
+          <div className="admin-avatar-editor-actions">
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={pending}
+              loading={readingAvatar}
+              onClick={() => avatarInput.current?.click()}
+            >
+              <Camera size={16} />
+              {avatarDataUrl || draft.avatar ? '更换图片' : '上传图片'}
+            </Button>
+            {(avatarDataUrl || draft.avatar) && (
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={pending || readingAvatar}
+                onClick={clearAvatar}
+              >
+                <X size={15} />
+                移除头像
+              </Button>
+            )}
+          </div>
+        </div>
+        <input
+          ref={avatarInput}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          aria-label="上传角色头像文件"
+          onChange={(event) => void selectAvatar(event)}
+          hidden
+          disabled={pending || readingAvatar}
+        />
+      </div>
       <div className="admin-form-grid">
         <Field label="角色名称">
           <input
@@ -1503,13 +1607,23 @@ function CharacterEditor({
         />
       </Field>
       <div className="admin-form-grid admin-avatar-fields">
-        <Field label="头像地址" hint="可选，支持 HTTP / HTTPS 图片地址。">
+        <Field
+          label="头像图片地址"
+          hint={
+            avatarDataUrl
+              ? '已选择本地图片，保存时将使用上传的图片。'
+              : draft.avatar.startsWith('/api/avatars/')
+                ? '当前使用已上传的头像。填写新地址可替换；留空保留上传头像。'
+                : '也可填写 HTTP / HTTPS 图片地址。'
+          }
+        >
           <input
             type="url"
             pattern="https?://.*"
             maxLength={2048}
             placeholder="https://example.com/avatar.png"
-            value={draft.avatar}
+            value={draft.avatar.startsWith('/api/avatars/') ? '' : draft.avatar}
+            disabled={pending || readingAvatar || !!avatarDataUrl}
             onChange={(event) => field('avatar', event.target.value)}
           />
         </Field>
@@ -1555,7 +1669,11 @@ function CharacterEditor({
         label="上架角色"
         description="上架后，所有已登录用户都可以与该角色对话。"
       />
-      <FormFooter pending={pending} onClose={onClose} label={item ? '保存角色' : '创建角色'} />
+      <FormFooter
+        pending={pending || readingAvatar}
+        onClose={onClose}
+        label={item ? '保存角色' : '创建角色'}
+      />
     </form>
   );
 }
@@ -2637,8 +2755,10 @@ function SettingsEditor({
         <section className="admin-settings-section">
           <div className="admin-settings-description">
             <span className="admin-settings-index">02</span>
-            <h3>默认调用限额</h3>
-            <p>新注册用户将采用这些限额。现有用户的配置不受影响。</p>
+            <h3>全局调用限额</h3>
+            <p>
+              修改后立即同步所有用户的对应限额，保留已用次数。单用户调整会被下一次全局修改覆盖。
+            </p>
           </div>
           <div className="admin-settings-fields">
             <div className="admin-form-grid">

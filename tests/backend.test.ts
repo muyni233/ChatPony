@@ -62,3 +62,8 @@ test(
   () => runFixture('model-registry-check.ts', 'Model registry check passed'),
   20_000,
 );
+test(
+  'global quota changes synchronize every account atomically without resetting usage',
+  () => runFixture('global-quota-check.ts', 'Global quota check passed'),
+  20_000,
+);

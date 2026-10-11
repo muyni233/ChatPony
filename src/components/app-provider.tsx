@@ -17,7 +17,7 @@ type AppContextType = {
   data: Bootstrap | null;
   loading: boolean;
   error: string | null;
-  refresh: () => Promise<void>;
+  refresh: () => Promise<Bootstrap | null>;
   notify: (message: string, kind?: 'success' | 'error') => void;
   openAuth: (mode?: 'login' | 'register') => void;
   authMode: 'login' | 'register' | null;
@@ -41,8 +41,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setData(result);
         setError(null);
       }
+      return result;
     } catch (e) {
       if (sequence === refreshSequence.current) setError((e as Error).message);
+      return null;
     } finally {
       if (sequence === refreshSequence.current) setLoading(false);
     }

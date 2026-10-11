@@ -112,7 +112,8 @@ function transport() {
   let password: string;
   try {
     password = decrypt(config.password);
-  } catch {
+  } catch (error) {
+    if (error instanceof AppError) throw error;
     throw new AppError(503, 'MAIL_KEY', '邮件凭据无法读取，请管理员重新配置。');
   }
   return {

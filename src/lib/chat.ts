@@ -63,7 +63,8 @@ function getProvider(providerId: string, requireActive = true): ModelProvider {
   let apiKey: string;
   try {
     apiKey = decrypt(String(row.supplier_api_key));
-  } catch {
+  } catch (error) {
+    if (error instanceof AppError) throw error;
     throw new AppError(503, 'PROVIDER_KEY', '模型密钥无法读取，请联系管理员重新配置。');
   }
   return { ...configuration, apiKey };
@@ -289,6 +290,7 @@ function systemPrompt(
 }
 
 function remember(userId: string, characterId: string, content: string): string[] {
+  if (!getSettings().automaticMemoryEnabled) return [];
   const db = getDb();
   const facts = extractExplicitMemories(content);
   if (!facts.length) return [];
@@ -638,14 +640,6 @@ export async function chatResponse(
                   resolveModel: getProvider,
                   status: (text: string) => emit({ type: 'status', text, characterId }),
                 };
-                await compressConversation({ ...maintenance, assertLease });
-                ({ state, history } = loadHistory());
-                contextOptions = {
-                  ...contextOptions,
-                  messages: history,
-                  summary: String(state.summary),
-                  boundary: Number(state.summary_boundary),
-                };
                 let memories: MemoryMatch[] = [];
                 try {
                   const recall = await recallMemories(
@@ -691,14 +685,36 @@ export async function chatResponse(
                   memories,
                   latestContent,
                 );
-                const context = prepareContext({ ...contextOptions, system });
+                let context = prepareContext({ ...contextOptions, system });
+                // The configured summarizer handles both scheduled compression and
+                // early capacity pressure, using the final persona/memory prompt.
+                // A local preview must not advance the durable summary cursor first.
+                await compressConversation({
+                  ...maintenance,
+                  assertLease,
+                  forceBoundary: context.compressed ? context.boundary : undefined,
+                });
+                assertLease();
+                assertCharacterState();
+                ({ state, history } = loadHistory());
+                contextOptions = {
+                  ...contextOptions,
+                  messages: history,
+                  summary: String(state.summary),
+                  boundary: Number(state.summary_boundary),
+                };
+                context = prepareContext({ ...contextOptions, system });
                 if (context.compressed) {
-                  db.query(
-                    'UPDATE conversations SET summary=?,summary_boundary=? WHERE id=? AND lock_token=?',
-                  ).run(context.summary, context.boundary, conversationId, token);
+                  // If a configured model consumed only part of a large backlog,
+                  // keep the remaining history pending. The hard prompt budget may
+                  // use an excerpt for this reply without claiming it was summarized.
+                  if (!getSettings().compressionModelId)
+                    db.query(
+                      'UPDATE conversations SET summary=?,summary_boundary=? WHERE id=? AND lock_token=?',
+                    ).run(context.summary, context.boundary, conversationId, token);
                   emit({
                     type: 'status',
-                    text: '较早的对话已整理为摘要，原始消息完整保留。',
+                    text: '本轮上下文达到容量上限，超出部分暂以原文截取处理；原始消息保留，未总结的历史会在后续继续处理。',
                     characterId,
                   });
                 }

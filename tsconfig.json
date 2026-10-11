@@ -31,7 +31,9 @@
     ".next-e2e/types/**/*.ts",
     ".next-e2e/dev/types/**/*.ts",
     ".next-build/types/**/*.ts",
-    ".next-build/dev/types/**/*.ts"
+    ".next-build/dev/types/**/*.ts",
+    ".next-repair/types/**/*.ts",
+    ".next-repair/dev/types/**/*.ts"
   ],
   "exclude": ["node_modules"]
 }

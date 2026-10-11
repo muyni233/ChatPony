@@ -72,7 +72,7 @@ if (import.meta.main) {
     const destination = process.argv[2];
     if (!destination || destination === '--help') {
       console.log(
-        '用法：bun scripts/backup.ts ./backups/chatpony-2026-10-11.db\n使用 DATABASE_PATH 指定源数据库。可在线备份；不会覆盖已有文件。请同时独立保管 ENCRYPTION_KEY 或开发环境的 .encryption-key。',
+        '用法：bun scripts/backup.ts ./backups/chatpony-2026-10-11.db\n使用 DATABASE_PATH 指定源数据库。可在线备份；不会覆盖已有文件。请同时独立保管 ENCRYPTION_KEY 或数据库目录的 .encryption-key。',
       );
       if (!destination) process.exitCode = 1;
     } else {
