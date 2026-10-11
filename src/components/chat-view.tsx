@@ -288,8 +288,10 @@ export function ChatView() {
   const mentionedQuery = (input.match(/@([^\s@]*)$/)?.[1] || '').toLowerCase();
   const mentionCharacters = characters.filter(
     (c) =>
-      c.name.toLowerCase().includes(mentionedQuery) ||
-      c.slug.toLowerCase().includes(mentionedQuery),
+      c.active &&
+      data.characters.some((available) => available.id === c.id) &&
+      (c.name.toLowerCase().includes(mentionedQuery) ||
+        c.slug.toLowerCase().includes(mentionedQuery)),
   );
   return (
     <div className="chat-workspace">

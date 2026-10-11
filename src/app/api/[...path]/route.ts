@@ -12,10 +12,18 @@ import {
 import { chatResponse, testProvider } from '@/lib/chat';
 import { AppError, errorResponse } from '@/lib/errors';
 import { getQuota, resetQuota } from '@/lib/quota';
-import { getMailConfig, sendVerificationCode, testMail, updateMailConfig } from '@/lib/mail';
+import {
+  getMailConfig,
+  sendVerificationCode,
+  sendTestMail,
+  testMail,
+  updateMailConfig,
+} from '@/lib/mail';
+import { listMailDeliveries } from '@/lib/mail-diagnostics';
 import { normalizeEmail } from '@/lib/email-policy';
 import { AVATAR_JSON_BYTES, avatarResponse, uploadAvatar } from '@/lib/avatars';
 import { saveCharacterWithAvatar } from '@/lib/character-avatars';
+import { deleteUserCharacter, getUserCharacters, saveUserCharacter } from '@/lib/user-characters';
 import { getAudit, getAuditStats, listAudit } from '@/lib/audit';
 import {
   getEmbeddingSettings,
@@ -123,10 +131,11 @@ async function handle(request: Request, context: RouteContext): Promise<Response
     if (method !== 'GET' && method !== 'HEAD') assertMutationRequest(request);
 
     if (method === 'GET' && route === 'bootstrap') return json(getBootstrap(currentUser(request)));
-    if (method === 'GET' && route === 'characters') return json(listCharacters());
+    if (method === 'GET' && route === 'characters')
+      return json(listCharacters(false, currentUser(request)?.id));
     if (method === 'GET' && route === 'announcements') return json(listAnnouncements());
     if (method === 'GET' && path[0] === 'avatars' && path.length === 2)
-      return await avatarResponse(path[1]);
+      return await avatarResponse(path[1], currentUser(request)?.id);
     if (method === 'POST' && route === 'auth/register') {
       const user = await register(request, await body(request));
       return json(user, 201, createSession(user.id, request));
@@ -158,6 +167,12 @@ async function handle(request: Request, context: RouteContext): Promise<Response
         rateLimit(request, 'mail-test', 10, 60 * 1000, admin.id);
         return json(await testMail());
       }
+      if (method === 'POST' && route === 'admin/mail/send-test') {
+        rateLimit(request, 'mail-send-test', 5, 60 * 1000, admin.id);
+        return json(await sendTestMail(await body(request)));
+      }
+      if (method === 'GET' && route === 'admin/mail/deliveries')
+        return json(listMailDeliveries(Object.fromEntries(new URL(request.url).searchParams)));
       if (method === 'GET' && route === 'admin/requests')
         return json(listAudit(Object.fromEntries(new URL(request.url).searchParams)));
       if (method === 'GET' && route === 'admin/requests/stats')
@@ -252,6 +267,23 @@ async function handle(request: Request, context: RouteContext): Promise<Response
     }
 
     const user = requireUser(request);
+    if (path[0] === 'account' && path[1] === 'characters') {
+      if (path.length === 2 && method === 'GET') return json(getUserCharacters(user.id));
+      if ((path.length === 2 && method === 'POST') || (path.length === 3 && method === 'PATCH')) {
+        rateLimit(request, 'user-character-save', 30, 60 * 1000, user.id);
+        const input = await body(request, AVATAR_JSON_BYTES);
+        if (input.avatarDataUrl !== undefined)
+          rateLimit(request, 'character-avatar-upload', 10, 60 * 1000, user.id);
+        return json(
+          await saveUserCharacter(user.id, method === 'POST' ? null : path[2], input),
+          method === 'POST' ? 201 : 200,
+        );
+      }
+      if (path.length === 3 && method === 'DELETE') {
+        deleteUserCharacter(user.id, path[2]);
+        return json({ ok: true });
+      }
+    }
     if (route === 'account/persona') {
       if (method === 'GET') return json(getPersona(user.id));
       if (method === 'PATCH') return json(updatePersona(user.id, await body(request)));

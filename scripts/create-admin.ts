@@ -82,8 +82,17 @@ async function main(): Promise<void> {
   });
   const settings = getSettings();
   db.query(
-    "INSERT INTO users(id,email,name,password_hash,role,limit_5h,limit_7d,created_at) VALUES(?,?,?,?,'admin',?,?,?)",
-  ).run(id(), email, name, passwordHash, settings.defaultLimit5h, settings.defaultLimit7d, now());
+    "INSERT INTO users(id,email,name,password_hash,role,limit_5h,limit_7d,character_slots,created_at) VALUES(?,?,?,?,'admin',?,?,?,?)",
+  ).run(
+    id(),
+    email,
+    name,
+    passwordHash,
+    settings.defaultLimit5h,
+    settings.defaultLimit7d,
+    settings.defaultCharacterSlots,
+    now(),
+  );
   console.log(`管理员已创建：${email}。现在可在登录页面登录。`);
 }
 

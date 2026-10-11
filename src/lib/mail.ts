@@ -5,8 +5,15 @@ import { getDb, now } from './db';
 import { encrypt, decrypt } from './crypto';
 import { AppError } from './errors';
 import { assertRegistrationAllowed, getRegistrationPolicy, normalizeEmail } from './email-policy';
-import type { MailConfig } from './types';
+import type { MailConfig, MailDelivery } from './types';
 import type { Row } from './mappers';
+import {
+  beginMailAttempt,
+  configureMailAttempt,
+  diagnoseMailError,
+  finishMailAttempt,
+  type MailAttempt,
+} from './mail-diagnostics';
 
 type StoredMail = Omit<MailConfig, 'hasPassword'> & { password: string };
 const defaults: StoredMail = {
@@ -106,9 +113,10 @@ export function assertMailConfigured(): void {
     );
 }
 
-function transport() {
-  assertMailConfigured();
+function transport(attempt: MailAttempt, extraSecrets: string[]) {
   const config = storedMail();
+  configureMailAttempt(attempt, config, '', extraSecrets);
+  assertMailConfigured();
   let password: string;
   try {
     password = decrypt(config.password);
@@ -116,6 +124,7 @@ function transport() {
     if (error instanceof AppError) throw error;
     throw new AppError(503, 'MAIL_KEY', '邮件凭据无法读取，请管理员重新配置。');
   }
+  configureMailAttempt(attempt, config, password, extraSecrets);
   return {
     config,
     client: nodemailer.createTransport({
@@ -135,27 +144,84 @@ function transport() {
   };
 }
 
-function mailError(error: unknown): AppError {
-  const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
-  return new AppError(
-    503,
-    code === 'EAUTH' ? 'MAIL_AUTH_FAILED' : 'MAIL_UNAVAILABLE',
-    code === 'EAUTH'
-      ? 'SMTP 鉴权失败，请管理员检查邮件凭据。'
-      : '邮件服务暂不可用，请稍后重试或联系管理员。',
-  );
+async function mailOperation<T>(
+  kind: MailDelivery['kind'],
+  recipient: string,
+  action: (connection: ReturnType<typeof transport>) => Promise<{ result: T; response?: string }>,
+  admin = false,
+  extraSecrets: string[] = [],
+): Promise<{ result: T; id: string }> {
+  const attempt = beginMailAttempt(kind, recipient);
+  let connection: ReturnType<typeof transport> | undefined;
+  try {
+    connection = transport(attempt, extraSecrets);
+    const value = await action(connection);
+    finishMailAttempt(attempt, undefined, value.response);
+    return { result: value.result, id: attempt.id };
+  } catch (error) {
+    const diagnosis = diagnoseMailError(error, attempt);
+    finishMailAttempt(attempt, diagnosis);
+    const reason = admin
+      ? `${diagnosis.summary}${diagnosis.smtpCode ? `（SMTP ${diagnosis.smtpCode}${diagnosis.enhancedStatus ? ' / ' + diagnosis.enhancedStatus : ''}）` : ''}。${diagnosis.hint}`
+      : '验证码邮件发送失败，请稍后重试或联系管理员。';
+    throw new AppError(
+      503,
+      diagnosis.code === 'EAUTH' ? 'MAIL_AUTH_FAILED' : 'MAIL_UNAVAILABLE',
+      `${reason} 参考编号：${attempt.id}`,
+    );
+  } finally {
+    connection?.client.close();
+  }
 }
 
-export async function testMail(): Promise<{ ok: true; message: string }> {
-  const { client } = transport();
-  try {
-    await client.verify();
-    return { ok: true, message: 'SMTP 连接与鉴权验证成功，未发送测试邮件。' };
-  } catch (error) {
-    throw mailError(error);
-  } finally {
-    client.close();
-  }
+export async function testMail(): Promise<{ ok: true; message: string; id: string }> {
+  const attempt = await mailOperation(
+    'connection-test',
+    '',
+    async ({ client }) => {
+      await client.verify();
+      return { result: true };
+    },
+    true,
+  );
+  return {
+    ok: true,
+    id: attempt.id,
+    message:
+      'SMTP 连接与鉴权验证成功，未发送测试邮件；这不能确认服务器会接受发件地址或邮件内容，请继续实际发信测试。',
+  };
+}
+
+export async function sendTestMail(
+  input: Record<string, unknown>,
+): Promise<{ ok: true; message: string; id: string }> {
+  const parsed = z.object({ email: z.string() }).strict().safeParse(input);
+  if (!parsed.success) throw new AppError(400, 'VALIDATION_ERROR', '请输入有效的测试收件邮箱。');
+  const recipient = normalizeEmail(parsed.data.email);
+  const attempt = await mailOperation(
+    'test-email',
+    recipient,
+    async ({ config, client }) => {
+      const info = await client.sendMail({
+        from: { name: config.fromName || 'ChatPony', address: config.fromEmail },
+        to: { address: recipient, name: '' },
+        subject: 'ChatPony 邮件发送测试',
+        text: '这是一封由 ChatPony 管理员主动发送的测试邮件，用于验证 SMTP 发件地址与实际投递配置。此邮件不包含注册验证码。',
+      });
+      if (!info.accepted?.length)
+        throw Object.assign(new Error('SMTP accepted no recipient'), {
+          code: 'MAIL_NO_RECIPIENT',
+          command: 'RCPT TO',
+        });
+      return { result: true, response: info.response };
+    },
+    true,
+  );
+  return {
+    ok: true,
+    id: attempt.id,
+    message: 'SMTP 服务器已接受测试邮件，请检查收件箱和垃圾邮件；服务器接受不代表已送达收件箱。',
+  };
 }
 
 const challengeHash = (email: string, salt: string, code: string) =>
@@ -173,7 +239,6 @@ export async function sendVerificationCode(email: string): Promise<typeof result
   if (!policy.requireEmailVerification)
     throw new AppError(409, 'VERIFICATION_DISABLED', '当前注册无需邮箱验证码。');
   if (getDb().query('SELECT id FROM users WHERE email=?').get(email)) return result;
-  const { config, client } = transport();
   const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
   const salt = randomBytes(32).toString('hex');
   const codeHash = challengeHash(email, salt, code);
@@ -204,14 +269,27 @@ export async function sendVerificationCode(email: string): Promise<typeof result
     })
     .immediate();
   try {
-    const info = await client.sendMail({
-      from: { name: config.fromName || 'ChatPony', address: config.fromEmail },
-      to: { address: email, name: '' },
-      subject: 'ChatPony 注册验证码',
-      text: `你的 ChatPony 注册验证码是：${code}\n验证码 10 分钟内有效，只能使用一次。如非本人操作，请忽略此邮件。`,
-      html: `<p>你的 ChatPony 注册验证码是：</p><p style="font-size:28px;letter-spacing:6px;font-weight:bold">${escapeHtml(code)}</p><p>验证码 10 分钟内有效，只能使用一次。如非本人操作，请忽略此邮件。</p>`,
-    });
-    if (!info.accepted?.length) throw new Error('No accepted recipient');
+    await mailOperation(
+      'verification',
+      email,
+      async ({ config, client }) => {
+        const info = await client.sendMail({
+          from: { name: config.fromName || 'ChatPony', address: config.fromEmail },
+          to: { address: email, name: '' },
+          subject: 'ChatPony 注册验证码',
+          text: `你的 ChatPony 注册验证码是：${code}\n验证码 10 分钟内有效，只能使用一次。如非本人操作，请忽略此邮件。`,
+          html: `<p>你的 ChatPony 注册验证码是：</p><p style="font-size:28px;letter-spacing:6px;font-weight:bold">${escapeHtml(code)}</p><p>验证码 10 分钟内有效，只能使用一次。如非本人操作，请忽略此邮件。</p>`,
+        });
+        if (!info.accepted?.length)
+          throw Object.assign(new Error('SMTP accepted no recipient'), {
+            code: 'MAIL_NO_RECIPIENT',
+            command: 'RCPT TO',
+          });
+        return { result: true, response: info.response };
+      },
+      false,
+      [code],
+    );
     getDb()
       .query('UPDATE registration_challenges SET delivered=1 WHERE email=? AND code_hash=?')
       .run(email, codeHash);
@@ -220,9 +298,7 @@ export async function sendVerificationCode(email: string): Promise<typeof result
     getDb()
       .query('DELETE FROM registration_challenges WHERE email=? AND code_hash=?')
       .run(email, codeHash);
-    throw mailError(error);
-  } finally {
-    client.close();
+    throw error;
   }
 }
 

@@ -2,7 +2,7 @@
 
 以 My Little Pony 为主题的 RP 智能体对话平台，使用 **Next.js 16 + TypeScript + Bun + SQLite**。界面采用纸张、胶带、网格与柔和配色构成的手账视觉，支持桌面与移动端、键盘操作和减少动态效果设置。
 
-系统初始不包含用户、角色、供应商或模型配置。管理员统一配置角色人设、头像与模型服务；项目不包含原创小马插画。
+系统初始不包含用户、角色、供应商或模型配置。管理员配置平台角色与模型服务；登录用户可在分配的槽位内创建仅自己可用的角色。项目不包含原创小马插画。
 
 ## 已实现的功能
 
@@ -16,6 +16,7 @@
 - SSE 状态与消息推送、持久化幂等请求、失败重试、会话锁、请求取消及超时处理。
 - 管理员统一设置气泡分隔符和仅在显示时隐藏的符号，保持原始消息与调用计数完整。
 - 用户自设卡、头像上传与外链头像，自设卡可按需启用并作为用户的 RP 身份参考。
+- 用户私有角色、角色头像上传、停用草稿，以及管理员配置的全局和单用户角色槽位。
 - 管理员请求审查日志，覆盖角色调用、Embedding 与模型连接测试，可配置正文记录和保留时间。
 - Argon2id 密码散列、HttpOnly 会话、JSON 写入与浏览器跨站请求检查、持久化请求频率限制及 AES-256-GCM 密钥加密。
 
@@ -94,6 +95,14 @@ bun run admin:create --email admin@example.com --name 管理员
 
 管理员创建或编辑角色时也可以直接上传头像，格式和大小限制相同。图片预览随角色表单一起保存，取消编辑不会创建角色或上传文件；保存失败会回滚角色变更并清理本次文件。
 
+## 用户私有角色与槽位
+
+登录后从「我的角色」创建和管理私有角色，可填写名称、简介、人设、开场白、标签与头像。头像可直接上传，保存整个角色表单时才提交；取消不会上传。角色标识由系统生成且保持稳定，用于群聊中的 `@`。已有「我的自设」仍表示用户自己的 RP 身份卡，和对话角色分开管理。
+
+私有角色只供创建者使用，不进入公共角色广场；其他用户和匿名访问均不能通过猜测角色 ID 创建会话、修改角色或访问相关记忆。普通用户只能选择管理员已经启用的语言模型，接口不提供模型服务地址或凭据。无可用模型时可以保存停用草稿；可用角色能加入自己的私聊或群聊。
+
+管理员在平台设置配置全局用户角色槽位，默认每人 3 个，范围 0–100；也可以在用户编辑中调整个人槽位。实际修改全局值会同步所有现有用户，并成为新注册用户的默认值；同值保存不覆盖个人调整。平台角色不占用户槽位，停用草稿仍占槽位，删除私有角色会释放槽位。降低上限不删除已有角色或历史，只限制新建；已有角色仍可编辑、删除和使用。删除角色后保留已有聊天记录，停止该角色后续响应。
+
 ## 注册邮箱验证与域名规则
 
 邮箱验证码默认关闭，公开注册流程可直接使用。管理员可先在邮件设置保存 SMTP 主机、端口、连接方式、用户名、密码和发件信息，再在平台设置启用「注册需要邮箱验证」。SMTP 密码使用同一 `ENCRYPTION_KEY` 加密保存，接口只返回 `hasPassword`；编辑时省略 `password` 保留原值，空字符串清除。
@@ -101,6 +110,10 @@ bun run admin:create --email admin@example.com --name 管理员
 SMTP 用户名和密码可留空，用于无需认证的内部中继。邮箱验证开启期间不能清空 SMTP 主机或发件邮箱；需要移除邮件配置时，先关闭注册邮箱验证。
 
 SMTP 默认端口 587、`secure=false`、`requireTLS=true`，通过 STARTTLS 升级连接。使用隐式 TLS 的服务通常配置端口 465、`secure=true`。后台连接测试只验证 SMTP 连接与鉴权，不会发送测试邮件，也不保证发件地址已获服务商授权或邮件一定进入收件箱。具体连接参数见 [Nodemailer SMTP 文档](https://nodemailer.com/smtp)。
+
+管理员可在「邮件验证」填写测试收件邮箱，点击「发送测试邮件」检查实际发信。这会发送一封不含验证码的测试邮件，不创建注册验证码。成功仅代表 SMTP 服务器已接受，请继续检查收件箱、垃圾邮件及服务商投递记录。
+
+「邮件发送记录」分别记录连接测试、测试邮件与注册验证码操作，可按状态和参考编号查询。失败详情包括发生阶段、SMTP 返回码、增强状态码、脱敏服务器回复和处理建议；普通用户仅收到安全提示与参考编号，可提供给管理员查询。邮箱地址遮盖显示，不记录正文、密码、认证载荷或验证码。记录保留期沿用 `auditRetentionDays`（默认 7 天），超过 3 分钟仍无结果的操作标记为中断，不能据此断定未发信。该功能启用前没有保存的失败原因无法补查。
 
 开启验证后，新用户先请求邮件中的 6 位数字验证码，再提交昵称、邮箱、密码与验证码注册。验证码有效期为 10 分钟，重发间隔至少 60 秒，每个验证码最多尝试 5 次。平台使用持久化的全局、客户端和邮箱频率限制；验证码只以带随机盐的散列保存，成功创建账号时才在同一事务消费，并将验证时间保存为 `emailVerifiedAt`。未验证注册、既有账号和 CLI 创建的管理员默认验证时间为空，既有账号登录不受新注册规则影响。
 
@@ -359,7 +372,7 @@ tests/                     单元及集成测试
 | `/api/bootstrap`                                              | GET                         | 首屏数据，允许访客                                    |
 | `/api/auth/register`、`/api/auth/login`、`/api/auth/logout`   | POST                        | 注册、登录、退出                                      |
 | `/api/account`                                                | PATCH                       | 修改昵称、时区、密码                                  |
-| `/api/characters`、`/api/announcements`                       | GET                         | 公开角色与已发布公告                                  |
+| `/api/characters`、`/api/announcements`                       | GET                         | 可用角色（公共及本人私有）与已发布公告                |
 | `/api/conversations`                                          | GET / POST                  | 我的会话 / 新建会话                                   |
 | `/api/conversations/:id`                                      | GET / PATCH / DELETE        | 会话详情、设置、删除                                  |
 | `/api/conversations/:id/messages`                             | POST                        | `{content, requestId, retryOf?}`，返回 SSE            |
@@ -380,10 +393,14 @@ tests/                     单元及集成测试
 | `/api/auth/verification/send`                                 | POST                        | `{email}` 发送注册验证码；成功返回重发间隔及有效期    |
 | `/api/admin/mail`                                             | GET / PATCH                 | SMTP 配置；密码只允许写入                             |
 | `/api/admin/mail/test`                                        | POST                        | 仅验证 SMTP 连接与鉴权，不发送邮件                    |
+| `/api/admin/mail/send-test`                                   | POST                        | `{email}` 向指定邮箱实际发送测试邮件                  |
+| `/api/admin/mail/deliveries`                                  | GET                         | 邮件操作记录；支持 status、search、page、pageSize     |
 | `/api/admin/requests`、`/api/admin/requests/:id`              | GET                         | 请求审查列表与详情                                    |
 | `/api/admin/requests/stats`                                   | GET                         | 请求统计；period 支持 24h、7d、30d、all               |
 | `/api/account/persona`                                        | GET / PATCH                 | 当前账号的 RP 自设卡                                  |
 | `/api/account/avatar`                                         | POST                        | `{dataUrl}` 上传并替换当前账号头像，返回更新后的 User |
+| `/api/account/characters`                                     | GET / POST                  | 本人角色、槽位与可选模型 / 创建私有角色               |
+| `/api/account/characters/:id`                                 | PATCH / DELETE              | 编辑 / 删除本人私有角色                               |
 | `/api/avatars/:filename`                                      | GET                         | 公开读取服务端重编码后的 WebP 头像                    |
 
 开启注册邮箱验证时，`/api/auth/register` 的输入还需包含 `verificationCode`。平台设置接口同时支持 `requireEmailVerification`、`emailDomainMode`、`emailDomains`、`auditCaptureContent` 与 `auditRetentionDays`。

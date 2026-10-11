@@ -1114,7 +1114,7 @@ export function AdminPanel() {
               <SectionTitle
                 eyebrow="PEOPLE & PERMISSIONS"
                 title="用户与调用限额"
-                description="管理账户权限与调用限额。5 小时、7 天两种滚动限额会同时生效。"
+                description="管理账户权限、调用限额与私有角色槽位。5 小时、7 天两种滚动限额会同时生效。"
                 action={
                   <Button variant="secondary" onClick={() => resetQuota()}>
                     <RefreshCw size={16} />
@@ -1157,6 +1157,7 @@ export function AdminPanel() {
                       <th>权限 / 状态</th>
                       <th>5 小时限额</th>
                       <th>7 天限额</th>
+                      <th>角色槽位</th>
                       <th>加入时间</th>
                       <th>
                         <span className="admin-sr-only">操作</span>
@@ -1196,12 +1197,16 @@ export function AdminPanel() {
                           {amount(user.limit7d)}
                           <small> 次</small>
                         </td>
+                        <td className="admin-table-number">
+                          {amount(user.characterSlots ?? 3)}
+                          <small> 个</small>
+                        </td>
                         <td className="admin-table-date">{dateLabel(user.createdAt)}</td>
                         <td>
                           <div className="admin-table-actions">
                             <button
                               className="admin-icon-button"
-                              aria-label={`修改 ${user.name} 的权限与限额`}
+                              aria-label={`修改 ${user.name} 的权限、限额与槽位`}
                               onClick={() => setEditor({ type: 'user', item: user })}
                             >
                               <Pencil size={16} />
@@ -1336,7 +1341,7 @@ export function AdminPanel() {
       <Modal
         open={editor?.type === 'user'}
         onClose={() => setEditor(null)}
-        title="权限与调用限额"
+        title="权限、调用限额与角色槽位"
         description={editor?.type === 'user' ? `${editor.item.name} · ${editor.item.email}` : ''}
       >
         {editor?.type === 'user' && (
@@ -2584,6 +2589,7 @@ function UserEditor({
     disabled: item.disabled,
     limit5h: item.limit5h,
     limit7d: item.limit7d,
+    characterSlots: item.characterSlots ?? 3,
   });
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
@@ -2652,6 +2658,22 @@ function UserEditor({
       <p className="admin-field-note">
         两个滚动窗口会同时检查。调整上限不会清空当前调用计数；设为 0 时无法发起新的模型调用。
       </p>
+      <Field
+        label="个人角色槽位"
+        hint="允许 0–100 个。停用角色也占槽位，删除后释放；降低上限不会删除已有角色。下一次修改全局槽位时将同步覆盖此设置。"
+      >
+        <input
+          required
+          type="number"
+          min={0}
+          max={100}
+          step={1}
+          value={draft.characterSlots}
+          onChange={(event) =>
+            setDraft((previous) => ({ ...previous, characterSlots: Number(event.target.value) }))
+          }
+        />
+      </Field>
       <Toggle
         label="停用账户"
         description="停用后，该用户无法继续访问平台。"
@@ -2700,6 +2722,7 @@ function SettingsEditor({
           registrationOpen: draft.registrationOpen,
           defaultLimit5h: draft.defaultLimit5h,
           defaultLimit7d: draft.defaultLimit7d,
+          defaultCharacterSlots: draft.defaultCharacterSlots ?? 3,
           maxGroupRounds: draft.maxGroupRounds,
           siteDescription: draft.siteDescription,
           bubbleDelimiter: draft.bubbleDelimiter,
@@ -2720,7 +2743,7 @@ function SettingsEditor({
       <SectionTitle
         eyebrow="MAKE IT YOURS"
         title="平台设置"
-        description="管理注册入口、调用限额、消息展示与请求记录。"
+        description="管理注册入口、调用限额、角色槽位、消息展示与请求记录。"
       />
       <form onSubmit={submit} className="admin-settings-form">
         <ErrorNote error={error} />
@@ -2803,6 +2826,37 @@ function SettingsEditor({
         <section className="admin-settings-section">
           <div className="admin-settings-description">
             <span className="admin-settings-index">03</span>
+            <h3>用户角色槽位</h3>
+            <p>用户创建的角色仅本人可见和使用，不会发布到角色广场。</p>
+          </div>
+          <div className="admin-settings-fields">
+            <Field
+              label="全局用户角色槽位"
+              hint="允许 0–100 个。修改后立即同步所有用户；新注册用户也使用此数量。设置为 0 时暂停创建新角色。"
+            >
+              <input
+                required
+                type="number"
+                min={0}
+                max={100}
+                step={1}
+                value={draft.defaultCharacterSlots ?? 3}
+                onChange={(event) =>
+                  setDraft((previous) => ({
+                    ...previous,
+                    defaultCharacterSlots: Number(event.target.value),
+                  }))
+                }
+              />
+            </Field>
+            <p className="admin-field-note">
+              启用和停用的角色都占槽位，删除后释放。降低槽位不会删除已有角色，也不影响其继续使用。可在「用户与限额」单独调整；下一次全局修改会同步覆盖。
+            </p>
+          </div>
+        </section>
+        <section className="admin-settings-section">
+          <div className="admin-settings-description">
+            <span className="admin-settings-index">04</span>
             <h3>群聊响应规则</h3>
             <p>为角色之间的互动设置清晰的停止边界。</p>
           </div>
@@ -2835,7 +2889,7 @@ function SettingsEditor({
         </section>
         <section className="admin-settings-section">
           <div className="admin-settings-description">
-            <span className="admin-settings-index">04</span>
+            <span className="admin-settings-index">05</span>
             <h3>消息展示</h3>
             <p>调整角色回复的气泡拆分与符号显示，保留完整的原始对话内容。</p>
           </div>
@@ -2873,7 +2927,7 @@ function SettingsEditor({
         </section>
         <section className="admin-settings-section">
           <div className="admin-settings-description">
-            <span className="admin-settings-index">05</span>
+            <span className="admin-settings-index">06</span>
             <h3>请求记录</h3>
             <p>配置请求审查的数据范围和保留时间。</p>
           </div>

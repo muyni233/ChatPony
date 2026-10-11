@@ -11,9 +11,11 @@ import {
   LockKeyhole,
   Mail,
   RefreshCw,
+  Send,
   ShieldCheck,
 } from 'lucide-react';
 import { useApp } from '@/components/app-provider';
+import { MailDeliveryLog } from '@/components/mail-delivery-log';
 import { Badge, Button, Field, Select } from '@/components/ui';
 import { api, json } from '@/lib/client';
 import type { MailConfig, PlatformSettings } from '@/lib/types';
@@ -98,8 +100,12 @@ export function MailSettings({
   const [reload, setReload] = useState(0);
   const [loadError, setLoadError] = useState('');
   const [error, setError] = useState('');
-  const [pending, setPending] = useState<'save' | 'test' | null>(null);
+  const [pending, setPending] = useState<'save' | 'test' | 'send' | null>(null);
   const [testResult, setTestResult] = useState('');
+  const [testEmail, setTestEmail] = useState('');
+  const [sendError, setSendError] = useState('');
+  const [sendResult, setSendResult] = useState('');
+  const [deliveryRefresh, setDeliveryRefresh] = useState(0);
   const [requireVerification, setRequireVerification] = useState(settings.requireEmailVerification);
   const [domainMode, setDomainMode] = useState<PlatformSettings['emailDomainMode']>(
     settings.emailDomainMode,
@@ -172,6 +178,8 @@ export function MailSettings({
       setDraft(smtpDraft(value));
       setClearPassword(false);
       setTestResult('');
+      setSendResult('');
+      setSendError('');
       await onChanged();
       notify('SMTP 配置已保存', 'success');
     } catch (reason) {
@@ -195,11 +203,40 @@ export function MailSettings({
         setError(value.message || 'SMTP 连接测试失败。');
         return;
       }
-      setTestResult(value.message || 'SMTP 连接与身份验证通过，未发送测试邮件。');
+      setTestResult(
+        'SMTP 连接与鉴权验证成功。此检查不会发送邮件，也不代表服务器允许发信或邮件已送达。',
+      );
     } catch (reason) {
       setError(errorText(reason));
     } finally {
       setPending(null);
+      setDeliveryRefresh((value) => value + 1);
+    }
+  }
+
+  async function sendTestEmail(event: FormEvent) {
+    event.preventDefault();
+    if (pending || dirty || !complete || !testEmail.trim()) return;
+    setSendError('');
+    setSendResult('');
+    setPending('send');
+    try {
+      const value = await api<{ ok: boolean; message: string; id: string }>(
+        '/api/admin/mail/send-test',
+        json('POST', { email: testEmail.trim() }),
+      );
+      if (!value.ok) {
+        setSendError(value.message || '测试邮件发送失败，请查看下方邮件发送记录。');
+        return;
+      }
+      setSendResult(
+        `SMTP 服务器已接受，请检查收件箱或垃圾邮件。尚不能保证最终送达。参考编号：${value.id}`,
+      );
+    } catch (reason) {
+      setSendError(errorText(reason));
+    } finally {
+      setPending(null);
+      setDeliveryRefresh((value) => value + 1);
     }
   }
 
@@ -294,7 +331,7 @@ export function MailSettings({
               onSubmit={saveMail}
               aria-busy={pending === 'save'}
             >
-              <fieldset className="admin-mail-fields" disabled={pending === 'save'}>
+              <fieldset className="admin-mail-fields" disabled={pending !== null}>
                 <div className="admin-form-grid admin-mail-host-grid">
                   <Field label="SMTP 主机" hint="填写主机名，不包含 http:// 或端口。">
                     <input
@@ -464,7 +501,7 @@ export function MailSettings({
             <ShieldCheck size={17} />
             <span>
               <strong>检查连接与鉴权</strong>
-              <small>SMTP 连接测试不会实际发送邮件。</small>
+              <small>连接成功后，再发送一封测试邮件，检查发件权限和收件情况。</small>
             </span>
           </div>
           <div>
@@ -484,6 +521,64 @@ export function MailSettings({
           </div>
         </aside>
       </div>
+      <section className="admin-mail-card admin-mail-send-card">
+        <div className="admin-mail-card-heading">
+          <span className="admin-mail-icon">
+            <Send size={21} strokeWidth={1.5} />
+          </span>
+          <div>
+            <h3>发送测试邮件</h3>
+            <p>实际检查发件流程，使用已保存的 SMTP 配置。</p>
+          </div>
+        </div>
+        <form
+          className="admin-form admin-mail-send-form"
+          onSubmit={sendTestEmail}
+          aria-busy={pending === 'send'}
+        >
+          <div className="admin-mail-send-controls">
+            <Field label="测试收件邮箱" hint="仅在点击发送后向此地址发送一封测试邮件。">
+              <input
+                type="email"
+                required
+                maxLength={254}
+                autoComplete="email"
+                placeholder="yourname@example.com"
+                value={testEmail}
+                disabled={pending === 'send'}
+                onChange={(event) => {
+                  setTestEmail(event.target.value);
+                  setSendError('');
+                  setSendResult('');
+                }}
+              />
+            </Field>
+            <Button
+              type="submit"
+              loading={pending === 'send'}
+              disabled={dirty || !complete || !testEmail.trim() || pending !== null}
+            >
+              <Send size={16} />
+              发送测试邮件
+            </Button>
+          </div>
+          <p className="admin-mail-send-note">
+            {dirty
+              ? 'SMTP 配置有未保存的更改，请先保存后再发送。'
+              : !complete
+                ? '请先保存完整的 SMTP 主机与发件邮箱。'
+                : '服务器接受邮件后仍可能延迟、退信或进入垃圾邮件。连接测试成功不能替代实际发信测试。'}
+          </p>
+          <MailError error={sendError} />
+          {sendResult && !dirty && (
+            <div className="admin-embedding-success admin-mail-send-result" role="status">
+              <CheckCircle2 size={17} />
+              <span>{sendResult}</span>
+            </div>
+          )}
+        </form>
+      </section>
+      <MailDeliveryLog refreshKey={deliveryRefresh} />
       <form
         className="admin-settings-form admin-mail-policy"
         onSubmit={savePolicy}

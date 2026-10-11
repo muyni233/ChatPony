@@ -86,7 +86,8 @@ export function CharactersPage() {
   const { data, loading, openAuth } = useApp();
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<Character | null>(null);
-  const characters = (data?.characters || []).filter((c) =>
+  const publicCharacters = (data?.characters || []).filter((character) => !character.ownerId);
+  const characters = publicCharacters.filter((c) =>
     `${c.name} ${c.description} ${c.tags.join(' ')}`.toLowerCase().includes(query.toLowerCase()),
   );
   function start(c: Character) {
@@ -110,7 +111,7 @@ export function CharactersPage() {
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
-        <Badge tone="green">{data?.characters.length || 0} 位角色</Badge>
+        <Badge tone="green">{publicCharacters.length} 位角色</Badge>
       </div>
       {loading ? (
         <Loading />
@@ -367,6 +368,20 @@ export function MemoriesPage() {
     void load();
   }, [load]);
   const characters = data?.characters || [];
+  const rememberedCharacters = [
+    ...new Map([
+      ...memories.map(
+        (memory) =>
+          [
+            memory.characterId,
+            { id: memory.characterId, name: memory.characterName || '历史角色' },
+          ] as const,
+      ),
+      ...characters.map(
+        (character) => [character.id, { id: character.id, name: character.name }] as const,
+      ),
+    ]).values(),
+  ];
   const filtered = memories.filter((m) => !filter || m.characterId === filter);
   function edit(memory: Memory | 'new') {
     setFormError('');
@@ -479,7 +494,7 @@ export function MemoriesPage() {
               style={{ width: 210, fontSize: 12 }}
             >
               <option value="">所有角色</option>
-              {characters.map((c) => (
+              {rememberedCharacters.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
@@ -503,12 +518,12 @@ export function MemoriesPage() {
                   <article className="paper-card memory-card" key={m.id}>
                     <div className="memory-top">
                       <Avatar
-                        name={c?.name || '角'}
-                        src={c?.avatar}
+                        name={c?.name || m.characterName || '角'}
+                        src={c?.avatar ?? m.characterAvatar}
                         size="small"
-                        color={c?.color}
+                        color={c?.color ?? m.characterColor}
                       />
-                      <strong>{c?.name || '已停用角色'}</strong>
+                      <strong>{c?.name || m.characterName || '历史角色'}</strong>
                       <Badge tone={m.source === 'auto' ? 'green' : 'amber'}>
                         {m.source === 'auto' ? '对话记忆' : '手动添加'}
                       </Badge>
@@ -589,7 +604,15 @@ export function MemoriesPage() {
           >
             {editing === 'new' && (
               <Field label="关联角色">
-                <Select name="characterId" required defaultValue={filter || characters[0]?.id}>
+                <Select
+                  name="characterId"
+                  required
+                  defaultValue={
+                    characters.some((character) => character.id === filter)
+                      ? filter
+                      : characters[0]?.id
+                  }
+                >
                   {characters.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}

@@ -43,15 +43,37 @@ export async function removeOwnedAvatar(ownerId: string, url: string): Promise<v
   }
 }
 
-export async function avatarResponse(filename: string): Promise<Response> {
+export async function avatarResponse(
+  filename: string,
+  viewerId: string | null = null,
+): Promise<Response> {
   const path = avatarPath(filename);
+  let privateAvatar = false;
+  if (filename.startsWith('character-')) {
+    const match = filename.match(
+      /^character-(.+)-[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}\.webp$/,
+    );
+    const character = match
+      ? (getDb()
+          .query('SELECT owner_id FROM characters WHERE id=? AND avatar=?')
+          .get(match[1], `/api/avatars/${filename}`) as Row | null)
+      : null;
+    // Ownership comes from the persisted role, never from the URL or caller input.
+    // Soft-deleted roles remain readable by their owner for conversation history.
+    if (!character || (character.owner_id !== null && character.owner_id !== viewerId))
+      throw new AppError(404, 'AVATAR_NOT_FOUND', '头像不存在。');
+    privateAvatar = character.owner_id !== null;
+  }
   try {
     const bytes = await readFile(path);
     return new Response(new Uint8Array(bytes), {
       headers: {
         'Content-Type': 'image/webp',
         'Content-Length': String(bytes.byteLength),
-        'Cache-Control': 'public, max-age=31536000, immutable',
+        'Cache-Control': privateAvatar
+          ? 'private, no-store, max-age=0'
+          : 'public, max-age=31536000, immutable',
+        ...(privateAvatar ? { Vary: 'Cookie' } : {}),
         'X-Content-Type-Options': 'nosniff',
       },
     });

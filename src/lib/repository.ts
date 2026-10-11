@@ -202,6 +202,7 @@ const settingsFields = z
     registrationOpen: bool,
     defaultLimit5h: quotaLimit,
     defaultLimit7d: quotaLimit,
+    defaultCharacterSlots: integer(0, 100),
     maxGroupRounds: integer(1, 12),
     siteDescription: z.string().trim().max(300),
     // Display rules are literal strings. Whitespace is meaningful and must survive a save.
@@ -259,6 +260,7 @@ export function getSettings(): PlatformSettings {
     registrationOpen: Boolean(values.registrationOpen),
     defaultLimit5h: Number(values.defaultLimit5h),
     defaultLimit7d: Number(values.defaultLimit7d),
+    defaultCharacterSlots: Number(values.defaultCharacterSlots ?? 3),
     maxGroupRounds: Number(values.maxGroupRounds),
     siteDescription: typeof values.siteDescription === 'string' ? values.siteDescription : '',
     bubbleDelimiter: typeof values.bubbleDelimiter === 'string' ? values.bubbleDelimiter : '',
@@ -343,35 +345,51 @@ export function updateSettings(input: Record<string, unknown>): PlatformSettings
         changes.defaultLimit7d !== previous.defaultLimit7d
       )
         getDb().query('UPDATE users SET limit_7d=?').run(changes.defaultLimit7d);
+      if (
+        changes.defaultCharacterSlots !== undefined &&
+        changes.defaultCharacterSlots !== previous.defaultCharacterSlots
+      )
+        getDb().query('UPDATE users SET character_slots=?').run(changes.defaultCharacterSlots);
     })
     .immediate();
   return getSettings();
 }
 
-export function listCharacters(admin = false): Character[] {
+export function listCharacters(admin = false, userId: string | null = null): Character[] {
   const query = admin
-    ? 'SELECT c.* FROM characters c WHERE c.deleted_at IS NULL ORDER BY c.created_at DESC, c.rowid DESC'
-    : "SELECT c.* FROM characters c JOIN providers p ON p.id=c.provider_id JOIN suppliers s ON s.id=p.supplier_id WHERE c.active=1 AND c.deleted_at IS NULL AND p.kind='language' AND p.active=1 AND p.deleted_at IS NULL AND s.active=1 AND s.deleted_at IS NULL ORDER BY c.created_at DESC, c.rowid DESC";
-  return (getDb().query(query).all() as Row[]).map((row) => toCharacter(row, admin));
+    ? 'SELECT c.* FROM characters c WHERE c.owner_id IS NULL AND c.deleted_at IS NULL ORDER BY c.created_at DESC, c.rowid DESC'
+    : "SELECT c.* FROM characters c JOIN providers p ON p.id=c.provider_id JOIN suppliers s ON s.id=p.supplier_id WHERE (c.owner_id IS NULL OR c.owner_id=?) AND c.active=1 AND c.deleted_at IS NULL AND p.kind='language' AND p.active=1 AND p.deleted_at IS NULL AND s.active=1 AND s.deleted_at IS NULL ORDER BY c.created_at DESC, c.rowid DESC";
+  const rows = (admin ? getDb().query(query).all() : getDb().query(query).all(userId)) as Row[];
+  return rows.map((row) => toCharacter(row, admin));
 }
 
 export function listConversations(userId: string): Conversation[] {
   return (
     getDb()
       .query(
-        'SELECT c.*, (SELECT content FROM messages WHERE conversation_id=c.id ORDER BY rowid DESC LIMIT 1) AS last_message FROM conversations c WHERE c.user_id=? ORDER BY c.updated_at DESC,c.rowid DESC',
+        'SELECT c.*, (SELECT content FROM messages WHERE conversation_id=c.id ORDER BY rowid DESC LIMIT 1) AS last_message FROM conversations c WHERE c.user_id=? AND NOT EXISTS(SELECT 1 FROM json_each(c.character_ids) j JOIN characters r ON r.id=j.value WHERE r.owner_id IS NOT NULL AND r.owner_id!=c.user_id) ORDER BY c.updated_at DESC,c.rowid DESC',
       )
       .all(userId) as Row[]
   ).map(toConversation);
 }
 
 export function ownConversation(userId: string, conversationId: string): Row {
-  return found(
+  const row = found(
     getDb()
       .query('SELECT * FROM conversations WHERE id=? AND user_id=?')
       .get(conversationId, userId),
     '会话不存在。',
   );
+  // Fail closed if stale or tampered membership references somebody else's private role.
+  for (const characterId of toConversation(row).characterIds) {
+    if (
+      getDb()
+        .query('SELECT id FROM characters WHERE id=? AND owner_id IS NOT NULL AND owner_id!=?')
+        .get(characterId, userId)
+    )
+      throw new AppError(404, 'NOT_FOUND', '会话不存在。');
+  }
+  return row;
 }
 
 export function getConversation(userId: string, conversationId: string): ConversationDetail {
@@ -379,8 +397,8 @@ export function getConversation(userId: string, conversationId: string): Convers
   const conversation = toConversation(row);
   const characters = conversation.characterIds.flatMap((characterId) => {
     const character = getDb()
-      .query('SELECT * FROM characters WHERE id=?')
-      .get(characterId) as Row | null;
+      .query('SELECT * FROM characters WHERE id=? AND (owner_id IS NULL OR owner_id=?)')
+      .get(characterId, userId) as Row | null;
     return character ? [toCharacter(character)] : [];
   });
   const messages = (
@@ -419,9 +437,9 @@ export function createConversation(userId: string, input: Record<string, unknown
         found(
           getDb()
             .query(
-              "SELECT c.* FROM characters c JOIN providers p ON p.id=c.provider_id JOIN suppliers s ON s.id=p.supplier_id WHERE c.id=? AND c.active=1 AND c.deleted_at IS NULL AND p.kind='language' AND p.active=1 AND p.deleted_at IS NULL AND s.active=1 AND s.deleted_at IS NULL",
+              "SELECT c.* FROM characters c JOIN providers p ON p.id=c.provider_id JOIN suppliers s ON s.id=p.supplier_id WHERE c.id=? AND (c.owner_id IS NULL OR c.owner_id=?) AND c.active=1 AND c.deleted_at IS NULL AND p.kind='language' AND p.active=1 AND p.deleted_at IS NULL AND s.active=1 AND s.deleted_at IS NULL",
             )
-            .get(characterId),
+            .get(characterId, userId),
           '选择的角色当前不可用。',
         ),
       );
@@ -505,8 +523,10 @@ export function deleteConversation(userId: string, conversationId: string): void
 export function listMemories(userId: string): Memory[] {
   return (
     getDb()
-      .query('SELECT * FROM memories WHERE user_id=? ORDER BY updated_at DESC,rowid DESC')
-      .all(userId) as Row[]
+      .query(
+        'SELECT m.*,c.name AS character_name,c.avatar AS character_avatar,c.color AS character_color FROM memories m JOIN characters c ON c.id=m.character_id WHERE m.user_id=? AND (c.owner_id IS NULL OR c.owner_id=?) ORDER BY m.updated_at DESC,m.rowid DESC',
+      )
+      .all(userId, userId) as Row[]
   ).map((row) => annotateMemoryStatus(toMemory(row)));
 }
 
@@ -517,8 +537,10 @@ export function createMemory(userId: string, input: Record<string, unknown>): Me
   );
   found(
     getDb()
-      .query('SELECT id FROM characters WHERE id=? AND deleted_at IS NULL AND active=1')
-      .get(data.characterId),
+      .query(
+        'SELECT id FROM characters WHERE id=? AND (owner_id IS NULL OR owner_id=?) AND deleted_at IS NULL AND active=1',
+      )
+      .get(data.characterId, userId),
     '角色不存在或暂不可用。',
   );
   const count = getDb()
@@ -547,7 +569,11 @@ export function updateMemory(
 ): Memory {
   const data = validated(z.object({ content: shortText(2000) }).strict(), input);
   found(
-    getDb().query('SELECT id FROM memories WHERE id=? AND user_id=?').get(memoryId, userId),
+    getDb()
+      .query(
+        'SELECT m.id FROM memories m JOIN characters c ON c.id=m.character_id WHERE m.id=? AND m.user_id=? AND (c.owner_id IS NULL OR c.owner_id=?)',
+      )
+      .get(memoryId, userId, userId),
     '记忆不存在。',
   );
   getDb()
@@ -562,8 +588,10 @@ export function updateMemory(
 
 export function deleteMemory(userId: string, memoryId: string): void {
   const result = getDb()
-    .query('DELETE FROM memories WHERE id=? AND user_id=?')
-    .run(memoryId, userId);
+    .query(
+      'DELETE FROM memories WHERE id=? AND user_id=? AND character_id IN (SELECT id FROM characters WHERE owner_id IS NULL OR owner_id=?)',
+    )
+    .run(memoryId, userId, userId);
   if (!result.changes) throw new AppError(404, 'NOT_FOUND', '记忆不存在。');
 }
 
@@ -961,12 +989,40 @@ export function deleteProvider(providerId: string): void {
 export function saveCharacter(
   characterId: string | null,
   input: Record<string, unknown>,
+  ownerId: string | null = null,
 ): Character {
+  return getDb()
+    .transaction(() => saveCharacterRecord(characterId, input, ownerId))
+    .immediate();
+}
+
+function saveCharacterRecord(
+  characterId: string | null,
+  input: Record<string, unknown>,
+  ownerId: string | null,
+): Character {
+  if (ownerId) {
+    const user = found(
+      getDb().query('SELECT character_slots FROM users WHERE id=? AND disabled=0').get(ownerId),
+      '账号不可用。',
+    );
+    if (!characterId) {
+      const count = getDb()
+        .query('SELECT COUNT(*) AS count FROM characters WHERE owner_id=? AND deleted_at IS NULL')
+        .get(ownerId) as Row;
+      if (Number(count.count) >= Number(user.character_slots))
+        throw new AppError(
+          409,
+          'CHARACTER_SLOTS_FULL',
+          '角色槽位已用完，请先删除不再需要的角色，或联系管理员调整槽位。',
+        );
+    }
+  }
   const existingRow = characterId
     ? found(
         getDb()
-          .query('SELECT * FROM characters WHERE id=? AND deleted_at IS NULL')
-          .get(characterId),
+          .query('SELECT * FROM characters WHERE id=? AND owner_id IS ? AND deleted_at IS NULL')
+          .get(characterId, ownerId),
         '角色不存在。',
       )
     : null;
@@ -1022,6 +1078,17 @@ export function saveCharacter(
     : null;
   if (provider && provider.kind !== 'language')
     throw new AppError(400, 'LANGUAGE_MODEL_REQUIRED', '角色只能关联语言模型。');
+  if (
+    ownerId &&
+    provider &&
+    providerId !== existing?.providerId &&
+    (!provider.active || !provider.supplier_active)
+  )
+    throw new AppError(
+      400,
+      'MODEL_UNAVAILABLE',
+      '所选语言模型当前不可用，请选择已启用的模型，或留空保存停用草稿。',
+    );
   if (data.active && (!provider || !provider.active || !provider.supplier_active))
     throw new AppError(400, 'PROVIDER_REQUIRED', '启用角色前，请先配置并启用供应商及模型。');
   const duplicate = getDb()
@@ -1050,7 +1117,7 @@ export function saveCharacter(
   else
     getDb()
       .query(
-        'INSERT INTO characters(id,name,slug,description,avatar,color,tags,personality,greeting,provider_id,active,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',
+        'INSERT INTO characters(id,name,slug,description,avatar,color,tags,personality,greeting,provider_id,active,created_at,owner_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',
       )
       .run(
         target,
@@ -1065,15 +1132,18 @@ export function saveCharacter(
         providerId,
         Number(data.active),
         now(),
+        ownerId,
       );
   return toCharacter(found(getDb().query('SELECT * FROM characters WHERE id=?').get(target)), true);
 }
 
-export function deleteCharacter(characterId: string): void {
+export function deleteCharacter(characterId: string, ownerId: string | null = null): void {
   if (
     !getDb()
-      .query('UPDATE characters SET active=0,deleted_at=? WHERE id=? AND deleted_at IS NULL')
-      .run(now(), characterId).changes
+      .query(
+        'UPDATE characters SET active=0,deleted_at=? WHERE id=? AND owner_id IS ? AND deleted_at IS NULL',
+      )
+      .run(now(), characterId, ownerId).changes
   )
     throw new AppError(404, 'NOT_FOUND', '角色不存在。');
 }
@@ -1096,6 +1166,7 @@ export function updateUser(userId: string, input: Record<string, unknown>): User
       .object({
         limit5h: quotaLimit.optional(),
         limit7d: quotaLimit.optional(),
+        characterSlots: integer(0, 100).optional(),
         disabled: bool.optional(),
         role: z.enum(['user', 'admin']).optional(),
       })
@@ -1120,8 +1191,17 @@ export function updateUser(userId: string, input: Record<string, unknown>): User
           throw new AppError(409, 'LAST_ADMIN', '平台须保留至少一位可用的管理员。');
       }
       getDb()
-        .query('UPDATE users SET limit_5h=?,limit_7d=?,disabled=?,role=? WHERE id=?')
-        .run(user.limit5h, user.limit7d, Number(user.disabled), user.role, userId);
+        .query(
+          'UPDATE users SET limit_5h=?,limit_7d=?,character_slots=?,disabled=?,role=? WHERE id=?',
+        )
+        .run(
+          user.limit5h,
+          user.limit7d,
+          user.characterSlots,
+          Number(user.disabled),
+          user.role,
+          userId,
+        );
       if (user.disabled || existing.role !== user.role) revokeSessions(userId);
       return toAdminUser(found(getDb().query('SELECT * FROM users WHERE id=?').get(userId)));
     })
@@ -1228,7 +1308,9 @@ export function getOverview(): AdminOverview {
   const count = (sql: string) => Number((getDb().query(sql).get() as Row).count);
   return {
     users: count('SELECT COUNT(*) AS count FROM users'),
-    characters: count('SELECT COUNT(*) AS count FROM characters WHERE deleted_at IS NULL'),
+    characters: count(
+      'SELECT COUNT(*) AS count FROM characters WHERE owner_id IS NULL AND deleted_at IS NULL',
+    ),
     conversations: count('SELECT COUNT(*) AS count FROM conversations'),
     calls: count("SELECT COUNT(*) AS count FROM api_calls WHERE status='success'"),
   };
@@ -1251,7 +1333,7 @@ export function getBootstrap(user: User | null): Bootstrap {
         );
   return {
     user,
-    characters: listCharacters(),
+    characters: listCharacters(false, user?.id),
     conversations: user ? listConversations(user.id) : [],
     announcements: listAnnouncements(),
     quota: user ? getQuota(user.id) : null,

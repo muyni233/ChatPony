@@ -13,6 +13,7 @@ import {
   Heart,
   House,
   IdCard,
+  LibraryBig,
   LogOut,
   Menu,
   MessageCircle,
@@ -32,6 +33,7 @@ import { useToday } from '@/lib/use-today';
 const nav = [
   { href: '/', label: '概览', icon: House },
   { href: '/characters', label: '角色广场', icon: Compass },
+  { href: '/my-characters', label: '我的角色', icon: LibraryBig },
   { href: '/conversations', label: '我的对话', icon: MessageCircle },
   { href: '/memories', label: '长期记忆', icon: BookHeart },
   { href: '/persona', label: '我的自设', icon: IdCard },

@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
-const SCHEMA_VERSION = 11;
+const SCHEMA_VERSION = 13;
 const globalDb = globalThis as typeof globalThis & {
   __chatponyDb?: Database;
   __chatponyDbPath?: string;
@@ -56,6 +56,16 @@ export function getDb(): Database {
       delivered INTEGER NOT NULL DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS registration_challenges_expiry ON registration_challenges(expires_at);
+    CREATE TABLE IF NOT EXISTS mail_deliveries (
+      id TEXT PRIMARY KEY, kind TEXT NOT NULL, status TEXT NOT NULL,
+      recipient TEXT NOT NULL DEFAULT '', smtp_host TEXT NOT NULL DEFAULT '',
+      smtp_port INTEGER NOT NULL DEFAULT 0, from_email TEXT NOT NULL DEFAULT '',
+      stage TEXT NOT NULL, code TEXT, command TEXT, smtp_code INTEGER, enhanced_status TEXT,
+      response TEXT, summary TEXT NOT NULL, hint TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL, finished_at TEXT, duration_ms INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS mail_deliveries_created ON mail_deliveries(created_at DESC);
+    CREATE INDEX IF NOT EXISTS mail_deliveries_status ON mail_deliveries(status,created_at DESC);
     CREATE TABLE IF NOT EXISTS request_audits (
       id TEXT PRIMARY KEY, kind TEXT, user_id TEXT, user_name TEXT, conversation_id TEXT,
       character_id TEXT, character_name TEXT, supplier_id TEXT, supplier_name TEXT, model_id TEXT,
@@ -157,6 +167,7 @@ export function getDb(): Database {
     CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     INSERT OR IGNORE INTO settings(key,value) VALUES
       ('registrationOpen','true'), ('defaultLimit5h','50'), ('defaultLimit7d','500'),
+      ('defaultCharacterSlots','3'),
       ('maxGroupRounds','6'), ('siteDescription','"与熟悉的角色，开启新的故事。"'),
       ('bubbleDelimiter','""'), ('hiddenSymbols','[]'),
       ('requireEmailVerification','false'), ('emailDomainMode','"any"'), ('emailDomains','[]'),
@@ -229,6 +240,29 @@ export function getDb(): Database {
     }
     db.exec('CREATE INDEX IF NOT EXISTS providers_supplier ON providers(supplier_id);');
     const userColumns = db.query('PRAGMA table_info(users)').all() as { name: string }[];
+    if (!userColumns.some((column) => column.name === 'character_slots')) {
+      db.exec(
+        'ALTER TABLE users ADD COLUMN character_slots INTEGER NOT NULL DEFAULT 3 CHECK(character_slots >= 0 AND character_slots <= 100)',
+      );
+      const configuredSlots = Number(
+        (
+          db.query("SELECT value FROM settings WHERE key='defaultCharacterSlots'").get() as {
+            value: string;
+          }
+        ).value,
+      );
+      db.query('UPDATE users SET character_slots=?').run(
+        Number.isInteger(configuredSlots) && configuredSlots >= 0 && configuredSlots <= 100
+          ? configuredSlots
+          : 3,
+      );
+    }
+    const characterColumns = db.query('PRAGMA table_info(characters)').all() as { name: string }[];
+    if (!characterColumns.some((column) => column.name === 'owner_id'))
+      db.exec(
+        'ALTER TABLE characters ADD COLUMN owner_id TEXT REFERENCES users(id) ON DELETE CASCADE',
+      );
+    db.exec('CREATE INDEX IF NOT EXISTS characters_owner ON characters(owner_id,deleted_at)');
     if (!userColumns.some((column) => column.name === 'email_verified_at'))
       db.exec('ALTER TABLE users ADD COLUMN email_verified_at TEXT');
     if (!userColumns.some((column) => column.name === 'avatar'))
@@ -371,7 +405,7 @@ export function getDb(): Database {
         }
       }
     }
-    db.exec('PRAGMA user_version=11');
+    db.exec('PRAGMA user_version=13');
   }).immediate();
   globalDb.__chatponyDb = db;
   globalDb.__chatponyDbPath = path;

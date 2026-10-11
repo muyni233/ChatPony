@@ -175,7 +175,7 @@ export async function register(request: Request, input: Record<string, unknown>)
         Number((db.query('SELECT value FROM settings WHERE key=?').get(key) as Row).value);
       const userId = id();
       db.query(
-        'INSERT INTO users(id,email,name,password_hash,limit_5h,limit_7d,created_at,email_verified_at) VALUES(?,?,?,?,?,?,?,?)',
+        'INSERT INTO users(id,email,name,password_hash,limit_5h,limit_7d,character_slots,created_at,email_verified_at) VALUES(?,?,?,?,?,?,?,?,?)',
       ).run(
         userId,
         email,
@@ -183,6 +183,7 @@ export async function register(request: Request, input: Record<string, unknown>)
         passwordHash,
         setting('defaultLimit5h'),
         setting('defaultLimit7d'),
+        setting('defaultCharacterSlots'),
         now(),
         currentPolicy.requireEmailVerification ? now() : null,
       );

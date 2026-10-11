@@ -43,6 +43,11 @@ test(
   60_000,
 );
 test(
+  'SMTP delivery diagnostics distinguish verification from delivery and protect registration secrets',
+  () => runFixture('mail-diagnostics-check.ts', 'Mail diagnostics check passed'),
+  60_000,
+);
+test(
   'user persona ownership and sanitized avatar upload integration',
   () => runFixture('account-check.ts', 'Account check passed'),
   60_000,

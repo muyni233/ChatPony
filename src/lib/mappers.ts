@@ -55,11 +55,13 @@ export function toUser(row: Row): User {
     persona: toPersona(row.persona),
     limit5h: Number(row.limit_5h),
     limit7d: Number(row.limit_7d),
+    characterSlots: Number(row.character_slots ?? 3),
   };
 }
 export function toCharacter(row: Row, admin = false): Character {
   return {
     id: String(row.id),
+    ownerId: row.owner_id ? String(row.owner_id) : null,
     name: String(row.name),
     slug: String(row.slug),
     description: String(row.description),
@@ -106,6 +108,13 @@ export function toMemory(row: Row): Memory {
     id: String(row.id),
     userId: String(row.user_id),
     characterId: String(row.character_id),
+    ...(typeof row.character_name === 'string'
+      ? {
+          characterName: row.character_name,
+          characterAvatar: String(row.character_avatar || ''),
+          characterColor: String(row.character_color || '#A58BBE'),
+        }
+      : {}),
     content: String(row.content),
     source: row.source === 'auto' ? 'auto' : 'manual',
     createdAt: String(row.created_at),

@@ -23,6 +23,7 @@ export interface User {
   persona?: UserPersona;
   limit5h: number;
   limit7d: number;
+  characterSlots: number;
 }
 export interface UserPersona {
   enabled: boolean;
@@ -35,6 +36,7 @@ export interface UserPersona {
 }
 export interface Character {
   id: string;
+  ownerId?: string | null;
   name: string;
   slug: string;
   description: string;
@@ -46,6 +48,11 @@ export interface Character {
   providerId?: string;
   active: boolean;
   createdAt: string;
+}
+export interface UserCharacters {
+  items: Character[];
+  slots: { used: number; limit: number; remaining: number };
+  models: { id: string; name: string }[];
 }
 export interface ProviderConfig {
   id: string;
@@ -100,6 +107,9 @@ export interface Memory {
   id: string;
   userId: string;
   characterId: string;
+  characterName?: string;
+  characterAvatar?: string;
+  characterColor?: string;
   content: string;
   source: 'manual' | 'auto';
   createdAt: string;
@@ -142,6 +152,7 @@ export interface PlatformSettings {
   registrationOpen: boolean;
   defaultLimit5h: number;
   defaultLimit7d: number;
+  defaultCharacterSlots: number;
   maxGroupRounds: number;
   siteDescription: string;
   bubbleDelimiter: string;
@@ -172,6 +183,43 @@ export interface MailConfig {
   hasPassword: boolean;
   fromEmail: string;
   fromName: string;
+}
+
+export interface MailDelivery {
+  id: string;
+  kind: 'connection-test' | 'test-email' | 'verification';
+  status: 'pending' | 'success' | 'failed' | 'interrupted';
+  recipient: string;
+  smtpHost: string;
+  smtpPort: number;
+  fromEmail: string;
+  stage:
+    | 'configuration'
+    | 'connection'
+    | 'tls'
+    | 'authentication'
+    | 'sender'
+    | 'recipient'
+    | 'data'
+    | 'complete'
+    | 'unknown';
+  code: string | null;
+  command: string | null;
+  smtpCode: number | null;
+  enhancedStatus: string | null;
+  response: string | null;
+  summary: string;
+  hint: string;
+  createdAt: string;
+  finishedAt: string | null;
+  durationMs: number | null;
+}
+export interface MailDeliveryList {
+  items: MailDelivery[];
+  total: number;
+  page: number;
+  pageSize: number;
+  retentionDays: number;
 }
 
 export interface RequestAudit {

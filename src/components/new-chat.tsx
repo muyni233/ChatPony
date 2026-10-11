@@ -2,11 +2,13 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Check, MessageCircle, Users, ArrowRight, Sparkles } from 'lucide-react';
+import Link from 'next/link';
+import { Check, MessageCircle, Users, ArrowRight, Sparkles, LockKeyhole } from 'lucide-react';
 import { useApp } from './app-provider';
 import { Avatar, Button, EmptyState, Field, Modal } from './ui';
 import { api, json } from '@/lib/client';
 import type { Conversation } from '@/lib/types';
+import './user-characters.css';
 
 export function NewChat({
   open,
@@ -75,8 +77,14 @@ export function NewChat({
       {!characters.length ? (
         <EmptyState
           icon={<Sparkles size={24} />}
-          title="角色即将入驻"
-          description="管理员发布角色后，就可以在这里开始对话了。"
+          title="还没有可用的角色"
+          description="可以创建自己的私有角色，或等待管理员在角色广场发布角色。"
+          action={
+            <Link href="/my-characters" className="button button-secondary" onClick={onClose}>
+              前往我的角色
+              <ArrowRight size={15} />
+            </Link>
+          }
         />
       ) : (
         <>
@@ -98,7 +106,16 @@ export function NewChat({
                 <Avatar name={c.name} src={c.avatar} color={c.color} />
                 <span>
                   <strong>{c.name}</strong>
-                  <small>@{c.slug}</small>
+                  <small className="private-picker-handle">
+                    {c.ownerId ? (
+                      <span className="private-picker-origin">
+                        <LockKeyhole size={10} />
+                        我的角色 · 仅自己可见
+                      </span>
+                    ) : (
+                      `@${c.slug}`
+                    )}
+                  </small>
                 </span>
                 <span className="check-box">{selected.includes(c.id) && <Check size={14} />}</span>
               </button>

@@ -52,7 +52,7 @@ try {
 
 try {
   const db = getDb();
-  assert.equal((db.query('PRAGMA user_version').get() as Row).user_version, 11);
+  assert.equal((db.query('PRAGMA user_version').get() as Row).user_version, 13);
   const suppliers = listSuppliers();
   assert.equal(suppliers.length, 2);
   const models = listProviders();

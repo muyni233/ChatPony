@@ -147,7 +147,7 @@ try {
   );
   closeDb();
   const migrated = getDb();
-  assert.equal((migrated.query('PRAGMA user_version').get() as Row).user_version, 11);
+  assert.equal((migrated.query('PRAGMA user_version').get() as Row).user_version, 13);
   assert.deepEqual(
     migrated
       .query(

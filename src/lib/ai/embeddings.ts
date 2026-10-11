@@ -614,7 +614,9 @@ async function requestVectors(
 }
 
 function memoryRows(userId?: string, characterId?: string) {
-  const conditions: string[] = [];
+  const conditions: string[] = [
+    'EXISTS(SELECT 1 FROM characters c WHERE c.id=m.character_id AND (c.owner_id IS NULL OR c.owner_id=m.user_id))',
+  ];
   const args: string[] = [];
   if (userId) {
     conditions.push('m.user_id=?');
@@ -665,7 +667,9 @@ function claimMemories(ids: string[], config: ConfigState): Claim[] {
       const claims: Claim[] = [];
       for (const memoryId of [...new Set(ids)].slice(0, BATCH_SIZE)) {
         const memory = db
-          .query('SELECT content FROM memories WHERE id=?')
+          .query(
+            'SELECT m.content FROM memories m JOIN characters c ON c.id=m.character_id WHERE m.id=? AND (c.owner_id IS NULL OR c.owner_id=m.user_id)',
+          )
           .get(memoryId) as Row | null;
         if (!memory) continue;
         const content = String(memory.content);
@@ -707,7 +711,9 @@ function settleClaims(claims: Claim[], vectors: number[][] | null, code?: string
         const claim = claims[index];
         if (vectors) {
           const current = db
-            .query('SELECT content FROM memories WHERE id=?')
+            .query(
+              'SELECT m.content FROM memories m JOIN characters c ON c.id=m.character_id WHERE m.id=? AND (c.owner_id IS NULL OR c.owner_id=m.user_id)',
+            )
             .get(claim.id) as Row | null;
           // A concurrent edit/deletion must never be overwritten by an obsolete embedding.
           if (!current || hash(String(current.content)) !== claim.hash) continue;
@@ -796,6 +802,17 @@ export async function recallMemories(
   query: string,
   options: { signal?: AbortSignal; audit?: AuditContext } = {},
 ): Promise<{ enabled: boolean; memories: MemoryMatch[] }> {
+  const assertAccess = () => {
+    if (
+      !getDb()
+        .query(
+          'SELECT id FROM characters WHERE id=? AND (owner_id IS NULL OR owner_id=?) AND deleted_at IS NULL',
+        )
+        .get(characterId, userId)
+    )
+      throw new AppError(404, 'NOT_FOUND', '角色不存在。');
+  };
+  assertAccess();
   const config = state();
   if (!config.value.enabled) return { enabled: false, memories: [] };
   assertSupplier(config.value);
@@ -822,6 +839,7 @@ export async function recallMemories(
     throw error;
   }
   const queryVector = vectors[0];
+  assertAccess();
   const matches: MemoryMatch[] = [];
   // Exact cosine search streams rows, avoiding a second full copy of the user's vector corpus.
   const rows = getDb()

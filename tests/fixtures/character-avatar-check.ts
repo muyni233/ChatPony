@@ -117,6 +117,8 @@ try {
   const bytes = await response('GET', firstAvatar.slice('/api/'.length));
   assert.equal(bytes.status, 200);
   assert.equal(bytes.headers.get('content-type'), 'image/webp');
+  assert.equal(bytes.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+  assert.equal(bytes.headers.get('vary'), null);
   const metadata = await sharp(Buffer.from(await bytes.arrayBuffer())).metadata();
   assert.equal(metadata.width, 256);
   assert.equal(metadata.height, 256);

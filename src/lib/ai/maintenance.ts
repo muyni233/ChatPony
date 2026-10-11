@@ -215,6 +215,14 @@ export async function compressConversation(
 /** Register only enabled, successfully persisted role replies; AUTOINCREMENT survives transcript deletion. */
 export function registerMemoryReply(userId: string, characterId: string, messageId: string): void {
   if (!getSettings().automaticMemoryEnabled) return;
+  if (
+    !getDb()
+      .query(
+        'SELECT id FROM characters WHERE id=? AND (owner_id IS NULL OR owner_id=?) AND active=1 AND deleted_at IS NULL',
+      )
+      .get(characterId, userId)
+  )
+    return;
   getDb()
     .query(
       'INSERT OR IGNORE INTO memory_summary_events(message_id,user_id,character_id,created_at) VALUES(?,?,?,?)',
@@ -255,6 +263,14 @@ export async function summarizeMemories(context: MaintenanceContext): Promise<st
   const token = id();
   const claim = db
     .transaction(() => {
+      if (
+        !db
+          .query(
+            'SELECT id FROM characters WHERE id=? AND (owner_id IS NULL OR owner_id=?) AND active=1 AND deleted_at IS NULL',
+          )
+          .get(context.characterId, context.user.id)
+      )
+        return null;
       db.query(
         'INSERT OR IGNORE INTO memory_summary_state(user_id,character_id,last_event_seq,updated_at) VALUES(?,?,0,?)',
       ).run(context.user.id, context.characterId, now());
@@ -354,8 +370,10 @@ export async function summarizeMemories(context: MaintenanceContext): Promise<st
           .query('SELECT disabled FROM users WHERE id=?')
           .get(context.user.id) as Row | null;
         const character = db
-          .query('SELECT active,deleted_at FROM characters WHERE id=?')
-          .get(context.characterId) as Row | null;
+          .query(
+            'SELECT active,deleted_at FROM characters WHERE id=? AND (owner_id IS NULL OR owner_id=?)',
+          )
+          .get(context.characterId, context.user.id) as Row | null;
         const currentSettings = getSettings();
         if (
           !lease ||
