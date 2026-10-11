@@ -1,0 +1,12 @@
+node_modules/
+.next/
+.next-*/
+.env*
+!.env.example
+data/
+backups/
+.encryption-key
+test-results/
+*.tsbuildinfo
+*.log
+__pycache__/

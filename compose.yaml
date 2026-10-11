@@ -1,0 +1,20 @@
+services:
+  chatpony:
+    build: .
+    image: chatpony:local
+    restart: unless-stopped
+    init: true
+    ports:
+      - '127.0.0.1:${PORT:-3000}:3000'
+    environment:
+      NODE_ENV: production
+      DATABASE_PATH: /app/data/chatpony.db
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?Set a persistent 32-byte ENCRYPTION_KEY}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+      NEXT_TELEMETRY_DISABLED: '1'
+    volumes:
+      - chatpony-data:/app/data
+    stop_grace_period: 150s
+
+volumes:
+  chatpony-data:

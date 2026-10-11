@@ -1,0 +1,8 @@
+node_modules
+.next*
+data
+backups
+test-results
+bun.lock
+AGENTS.md
+next-env.d.ts
