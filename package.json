@@ -18,10 +18,10 @@
     "@radix-ui/react-select": "2.3.8",
     "lucide-react": "^0.468.0",
     "lunar-javascript": "^1.7.7",
-    "next": "16.4.0",
+    "next": "16.4.1",
     "nodemailer": "10.1.0",
-    "react": "19.3.0",
-    "react-dom": "19.3.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
     "sharp": "0.35.5",
     "zod": "^4.1.0"
   },
