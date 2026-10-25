@@ -15,13 +15,29 @@ import {
   ArrowUpRight,
   Info,
   RefreshCw,
+  Archive,
+  ArchiveRestore,
+  Sparkles,
 } from 'lucide-react';
 import { useApp } from './app-provider';
+import { prefetchConversation } from '@/lib/conversation-cache';
 import { Avatar, Badge, Button, EmptyState, Field, Modal, Select, Skeleton } from './ui';
 import { NewChat } from './new-chat';
 import { api, dateLabel, json } from '@/lib/client';
 import { visibleMessage } from '@/lib/display';
-import type { Character, Conversation, Memory } from '@/lib/types';
+import type { Character, Conversation, Memory, MemoryKind, MemoryRecallResult } from '@/lib/types';
+
+const memoryKinds: { id: MemoryKind; label: string }[] = [
+  { id: 'note', label: '笔记' },
+  { id: 'fact', label: '事实' },
+  { id: 'preference', label: '偏好' },
+  { id: 'relationship', label: '关系' },
+  { id: 'event', label: '经历' },
+  { id: 'plan', label: '约定' },
+  { id: 'summary', label: '总结' },
+];
+const kindLabel = (kind: MemoryKind) =>
+  memoryKinds.find((item) => item.id === kind)?.label || '笔记';
 
 export function PageHeading({
   title,
@@ -259,7 +275,12 @@ export function ConversationsPage() {
                 const ch = data.characters.find((ch) => ch.id === c.characterIds[0]);
                 return (
                   <article className="paper-card conversation-row" key={c.id}>
-                    <Link href={`/chat/${c.id}`}>
+                    <Link
+                      href={`/chat/${c.id}`}
+                      onMouseEnter={() => prefetchConversation(data?.user?.id, c.id)}
+                      onFocus={() => prefetchConversation(data?.user?.id, c.id)}
+                      onTouchStart={() => prefetchConversation(data?.user?.id, c.id)}
+                    >
                       <Avatar
                         name={c.kind === 'group' ? '群' : ch?.name || c.title}
                         src={c.kind === 'private' ? ch?.avatar : undefined}
@@ -342,6 +363,18 @@ export function MemoriesPage() {
   const [busy, setBusy] = useState(false);
   const [indexing, setIndexing] = useState(false);
   const [formError, setFormError] = useState('');
+  const [view, setView] = useState<'active' | 'archived'>('active');
+  const [kindFilter, setKindFilter] = useState<MemoryKind | ''>('');
+  const [probe, setProbe] = useState(false);
+  const [probeQuery, setProbeQuery] = useState('');
+  const [probeCharacter, setProbeCharacter] = useState('');
+  const [probeResult, setProbeResult] = useState<{
+    vectorEnabled: boolean;
+    vectorFailed: boolean;
+    memories: MemoryRecallResult[];
+  } | null>(null);
+  const [probing, setProbing] = useState(false);
+  const [maintaining, setMaintaining] = useState(false);
   const userId = data?.user?.id;
   const load = useCallback(async () => {
     if (!userId) {
@@ -376,7 +409,53 @@ export function MemoriesPage() {
       ),
     ]).values(),
   ];
-  const filtered = memories.filter((m) => !filter || m.characterId === filter);
+  const scoped = memories.filter((m) => !filter || m.characterId === filter);
+  const archivedCount = scoped.filter((m) => m.status === 'archived').length;
+  const filtered = scoped.filter(
+    (m) => m.status === view && (!kindFilter || m.kind === kindFilter),
+  );
+  async function setStatus(memory: Memory, status: 'active' | 'archived') {
+    try {
+      await api(`/memories/${memory.id}`, json('PATCH', { status }));
+      await load();
+      notify(status === 'archived' ? '记忆已归档，不再参与召回。' : '记忆已恢复，会重新参与召回。');
+    } catch (e) {
+      notify((e as Error).message, 'error');
+    }
+  }
+  async function maintain() {
+    setMaintaining(true);
+    try {
+      const result = await api<{ archived: number }>('/memories/maintain', json('POST'));
+      await load();
+      notify(
+        result.archived
+          ? `已归档 ${result.archived} 条长期未使用或已过期的自动记忆。`
+          : '记忆状态良好，暂无需要归档的内容。',
+      );
+    } catch (e) {
+      notify((e as Error).message, 'error');
+    } finally {
+      setMaintaining(false);
+    }
+  }
+  async function runProbe(e: FormEvent) {
+    e.preventDefault();
+    const characterId = probeCharacter || filter || characters[0]?.id;
+    if (!characterId || !probeQuery.trim()) return;
+    setProbing(true);
+    try {
+      setProbeResult(
+        await api(
+          `/memories/search?characterId=${encodeURIComponent(characterId)}&q=${encodeURIComponent(probeQuery.trim())}`,
+        ),
+      );
+    } catch (e) {
+      notify((e as Error).message, 'error');
+    } finally {
+      setProbing(false);
+    }
+  }
   function edit(memory: Memory | 'new') {
     setFormError('');
     setEditing(memory);
@@ -408,15 +487,17 @@ export function MemoriesPage() {
     try {
       await api(
         editing === 'new' ? '/memories' : `/memories/${editing.id}`,
-        json(
-          editing === 'new' ? 'POST' : 'PATCH',
-          editing === 'new' ? fields : { content: fields.content },
-        ),
+        json(editing === 'new' ? 'POST' : 'PATCH', {
+          ...(editing === 'new' ? { characterId: fields.characterId } : {}),
+          content: fields.content,
+          kind: fields.kind,
+          importance: Number(fields.importance) / 100,
+        }),
       );
       await load();
       await refresh();
       setEditing(null);
-      notify('记忆已保存，建立向量索引后将用于相关对话。');
+      notify('记忆已保存，相关对话会立即通过关键词检索到它；启用向量服务后还会建立语义索引。');
     } catch (e) {
       setFormError((e as Error).message);
     } finally {
@@ -460,7 +541,9 @@ export function MemoriesPage() {
         <>
           <div className="page-intro-note">
             <Info size={17} />
-            <span>记忆按角色分别保存，仅自己可见。管理员启用 Embedding 服务后才会建立索引。</span>
+            <span>
+              记忆按角色分别保存，仅自己可见。召回同时使用关键词与语义检索，并按重要度和新鲜度排序；长期未用的自动记忆会归档，可随时恢复。
+            </span>
           </div>
           <div className="toolbar">
             <div className="filter-tabs">
@@ -473,14 +556,51 @@ export function MemoriesPage() {
                 <RefreshCw size={14} />
                 重建索引
               </Button>
-              <button
-                aria-pressed={!filter}
-                className={!filter ? 'selected' : ''}
-                onClick={() => setFilter('')}
+              <Button
+                variant="secondary"
+                loading={maintaining}
+                disabled={!memories.length || pending}
+                onClick={maintain}
               >
-                全部记忆<span>{memories.length}</span>
+                <Archive size={14} />
+                整理记忆
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={!characters.length}
+                onClick={() => setProbe(true)}
+              >
+                <Sparkles size={14} />
+                召回测试
+              </Button>
+              <button
+                aria-pressed={view === 'active'}
+                className={view === 'active' ? 'selected' : ''}
+                onClick={() => setView('active')}
+              >
+                活跃<span>{scoped.length - archivedCount}</span>
+              </button>
+              <button
+                aria-pressed={view === 'archived'}
+                className={view === 'archived' ? 'selected' : ''}
+                onClick={() => setView('archived')}
+              >
+                已归档<span>{archivedCount}</span>
               </button>
             </div>
+            <Select
+              value={kindFilter}
+              onValueChange={(value) => setKindFilter(value as MemoryKind | '')}
+              aria-label="按类型筛选记忆"
+              style={{ width: 140, fontSize: 12 }}
+            >
+              <option value="">所有类型</option>
+              {memoryKinds.map((kind) => (
+                <option key={kind.id} value={kind.id}>
+                  {kind.label}
+                </option>
+              ))}
+            </Select>
             <Select
               value={filter}
               onValueChange={setFilter}
@@ -521,8 +641,25 @@ export function MemoriesPage() {
                       <Badge tone={m.source === 'auto' ? 'green' : 'amber'}>
                         {m.source === 'auto' ? '对话记忆' : '手动添加'}
                       </Badge>
+                      <Badge>{kindLabel(m.kind)}</Badge>
                     </div>
                     <p>{visibleMessage(m.content, data.settings)}</p>
+                    <div className="memory-meta">
+                      <span
+                        className="memory-importance"
+                        title={`重要度 ${Math.round(m.importance * 100)}%`}
+                      >
+                        <span style={{ width: `${Math.round(m.importance * 100)}%` }} />
+                      </span>
+                      <span>重要度 {Math.round(m.importance * 100)}</span>
+                      <span>召回 {m.accessCount} 次</span>
+                      {m.expiresAt && <span>有效至 {dateLabel(m.expiresAt)}</span>}
+                      {m.tags.slice(0, 3).map((tag) => (
+                        <span className="memory-tag" key={tag}>
+                          #{tag}
+                        </span>
+                      ))}
+                    </div>
                     <Badge
                       tone={
                         m.vectorStatus === 'ready'
@@ -549,6 +686,20 @@ export function MemoriesPage() {
                           onClick={() => edit(m)}
                         >
                           <Edit3 size={14} />
+                        </button>
+                        <button
+                          className="icon-button"
+                          aria-label={m.status === 'archived' ? '恢复记忆' : '归档记忆'}
+                          data-tooltip={m.status === 'archived' ? '恢复' : '归档'}
+                          onClick={() =>
+                            setStatus(m, m.status === 'archived' ? 'active' : 'archived')
+                          }
+                        >
+                          {m.status === 'archived' ? (
+                            <ArchiveRestore size={14} />
+                          ) : (
+                            <Archive size={14} />
+                          )}
                         </button>
                         <button
                           className="icon-button"
@@ -625,6 +776,32 @@ export function MemoriesPage() {
                 placeholder="例如：我叫小星，喜欢读书。"
               />
             </Field>
+            <div className="admin-form-grid">
+              <Field label="类型">
+                <Select
+                  name="kind"
+                  defaultValue={editing === 'new' ? 'note' : editing.kind}
+                  aria-label="记忆类型"
+                >
+                  {memoryKinds.map((kind) => (
+                    <option key={kind.id} value={kind.id}>
+                      {kind.label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="重要度" hint="0–100，越高越优先被召回。">
+                <input
+                  name="importance"
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={5}
+                  required
+                  defaultValue={Math.round((editing === 'new' ? 0.75 : editing.importance) * 100)}
+                />
+              </Field>
+            </div>
             {formError && (
               <p className="form-error" role="alert">
                 {formError}
@@ -644,6 +821,80 @@ export function MemoriesPage() {
               </Button>
             </div>
           </form>
+        )}
+      </Modal>
+      <Modal
+        open={probe}
+        onClose={() => !probing && setProbe(false)}
+        title="召回测试"
+        description="模拟角色回复前的记忆检索，查看哪些记忆会被注入以及各自得分。测试不会计入召回次数。"
+        wide
+      >
+        <form className="form-stack" onSubmit={runProbe}>
+          <div className="admin-form-grid">
+            <Field label="角色">
+              <Select
+                value={probeCharacter || filter || characters[0]?.id || ''}
+                onValueChange={setProbeCharacter}
+                aria-label="召回测试角色"
+              >
+                {characters.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="模拟消息">
+              <input
+                value={probeQuery}
+                maxLength={500}
+                required
+                placeholder="例如：今天想吃点水果"
+                onChange={(event) => setProbeQuery(event.target.value)}
+              />
+            </Field>
+          </div>
+          <div className="modal-actions">
+            <Button type="submit" loading={probing} disabled={!probeQuery.trim()}>
+              <Search size={15} />
+              测试召回
+            </Button>
+          </div>
+        </form>
+        {probeResult && (
+          <div className="recall-results">
+            <p className="field-hint">
+              {probeResult.vectorFailed
+                ? '向量检索暂不可用，以下结果仅来自关键词检索。'
+                : probeResult.vectorEnabled
+                  ? '关键词与向量两路检索已融合排序。'
+                  : '向量记忆未启用，以下结果来自关键词检索。'}
+            </p>
+            {probeResult.memories.length ? (
+              <ol>
+                {probeResult.memories.map((item) => (
+                  <li key={item.id}>
+                    <div className="recall-result-head">
+                      <Badge>{kindLabel(item.kind)}</Badge>
+                      {item.routes.map((route) => (
+                        <Badge key={route} tone={route === 'vector' ? 'green' : 'amber'}>
+                          {route === 'vector' ? '语义' : '关键词'}
+                        </Badge>
+                      ))}
+                      <span>
+                        综合 {item.score.toFixed(2)} · 相关 {item.relevance.toFixed(2)} · 重要{' '}
+                        {item.importance.toFixed(2)}
+                      </span>
+                    </div>
+                    <p>{visibleMessage(item.content, data?.settings)}</p>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className="field-hint">没有召回到相关记忆。</p>
+            )}
+          </div>
         )}
       </Modal>
       <Modal

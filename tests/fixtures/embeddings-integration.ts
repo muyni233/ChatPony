@@ -230,7 +230,7 @@ try {
     "INSERT INTO settings(key,value) VALUES('bubbleDelimiter',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
   ).run(JSON.stringify('[next-bubble]'));
   const chat = await collect(await send());
-  assert.ok(lastPrompt.includes('语义检索到的长期记忆'));
+  assert.ok(lastPrompt.includes('检索到的相关长期记忆'));
   assert.ok(lastPrompt.includes('红色餐篮'));
   assert.ok(lastPrompt.includes('[next-bubble]'));
   assert.equal(lastPrompt.includes('不同角色的苹果秘密'), false);

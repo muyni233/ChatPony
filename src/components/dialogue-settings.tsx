@@ -13,7 +13,14 @@ type Compression = Pick<
 >;
 type MemoryPolicy = Pick<
   PlatformSettings,
-  'automaticMemoryEnabled' | 'memorySummaryInterval' | 'memorySummaryModelId'
+  | 'automaticMemoryEnabled'
+  | 'memorySummaryInterval'
+  | 'memorySummaryModelId'
+  | 'memoryStructuredExtraction'
+  | 'memoryRecallTopK'
+  | 'memoryKeywordWeight'
+  | 'memoryDecayRate'
+  | 'memoryArchiveThreshold'
 >;
 type Metadata = Pick<
   PlatformSettings,
@@ -126,6 +133,11 @@ export function DialogueSettings({
     automaticMemoryEnabled: settings.automaticMemoryEnabled,
     memorySummaryInterval: settings.memorySummaryInterval,
     memorySummaryModelId: settings.memorySummaryModelId,
+    memoryStructuredExtraction: settings.memoryStructuredExtraction,
+    memoryRecallTopK: settings.memoryRecallTopK,
+    memoryKeywordWeight: settings.memoryKeywordWeight,
+    memoryDecayRate: settings.memoryDecayRate,
+    memoryArchiveThreshold: settings.memoryArchiveThreshold,
   });
   const savedMetadata = JSON.stringify({
     metadataEnabled: settings.metadataEnabled,
@@ -362,9 +374,89 @@ export function DialogueSettings({
                     setMemory((previous) => ({ ...previous, memorySummaryModelId: value }))
                   }
                 />
+                <PolicyToggle
+                  label="结构化提炼"
+                  description="使用记忆摘要模型时，除经历总结外再提炼带类型与重要度的独立记忆（偏好、事实、关系、约定等），并与已有记忆自动去重合并。"
+                  value={memory.memoryStructuredExtraction}
+                  onChange={(value) =>
+                    setMemory((previous) => ({ ...previous, memoryStructuredExtraction: value }))
+                  }
+                />
+                <div className="admin-form-grid">
+                  <Field label="每次召回条数" hint="1–20 条，注入角色提示词的记忆上限。">
+                    <input
+                      type="number"
+                      required
+                      min={1}
+                      max={20}
+                      step={1}
+                      value={memory.memoryRecallTopK}
+                      onChange={(event) =>
+                        setMemory((previous) => ({
+                          ...previous,
+                          memoryRecallTopK: Number(event.target.value),
+                        }))
+                      }
+                    />
+                  </Field>
+                  <Field
+                    label="关键词权重"
+                    hint="0–1。启用向量检索时，关键词与语义得分按此比例融合。"
+                  >
+                    <input
+                      type="number"
+                      required
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      value={memory.memoryKeywordWeight}
+                      onChange={(event) =>
+                        setMemory((previous) => ({
+                          ...previous,
+                          memoryKeywordWeight: Number(event.target.value),
+                        }))
+                      }
+                    />
+                  </Field>
+                  <Field label="每日衰减率" hint="0–0.5。越大，久未使用的记忆排序下降越快。">
+                    <input
+                      type="number"
+                      required
+                      min={0}
+                      max={0.5}
+                      step={0.005}
+                      value={memory.memoryDecayRate}
+                      onChange={(event) =>
+                        setMemory((previous) => ({
+                          ...previous,
+                          memoryDecayRate: Number(event.target.value),
+                        }))
+                      }
+                    />
+                  </Field>
+                  <Field
+                    label="归档阈值"
+                    hint="0–1。自动记忆的「重要度 × 新鲜度」低于此值且超过 14 天时归档；手动记忆不会归档。"
+                  >
+                    <input
+                      type="number"
+                      required
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={memory.memoryArchiveThreshold}
+                      onChange={(event) =>
+                        setMemory((previous) => ({
+                          ...previous,
+                          memoryArchiveThreshold: Number(event.target.value),
+                        }))
+                      }
+                    />
+                  </Field>
+                </div>
                 <div className="admin-small-notice">
                   <BookHeart size={17} />
-                  开启自动记忆后，明确要求记住的事实会及时记录，不必等待汇总周期。
+                  召回同时使用关键词（无需向量模型）与向量语义两路检索，再按相关度、重要度与新鲜度排序并去除重复；被召回的记忆会被强化。明确要求记住的事实会及时记录，不必等待汇总周期。
                 </div>
                 <PolicyError error={errors.memory} />
               </div>

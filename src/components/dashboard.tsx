@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { ChevronRight, MessageCircle, Pin, Plus, Users } from 'lucide-react';
 import { useApp } from './app-provider';
+import { prefetchConversation } from '@/lib/conversation-cache';
 import { Avatar, Badge, Button, EmptyState, Skeleton } from './ui';
 import { NewChat } from './new-chat';
 import { QuotaCard } from './quota-card';
@@ -109,7 +110,13 @@ export function Dashboard() {
                     const character = data.characters.find((ch) => ch.id === c.characterIds[0]);
                     return (
                       <li key={c.id}>
-                        <Link className="recent-entry" href={`/chat/${c.id}`}>
+                        <Link
+                          className="recent-entry"
+                          href={`/chat/${c.id}`}
+                          onMouseEnter={() => prefetchConversation(data?.user?.id, c.id)}
+                          onFocus={() => prefetchConversation(data?.user?.id, c.id)}
+                          onTouchStart={() => prefetchConversation(data?.user?.id, c.id)}
+                        >
                           <Avatar
                             name={c.kind === 'group' ? '群' : character?.name || c.title}
                             src={c.kind === 'private' ? character?.avatar : undefined}

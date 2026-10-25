@@ -147,10 +147,10 @@ try {
   const replay = await events(
     await chatResponse(request('记住：我喜欢苹果。', firstId), user, privateId),
   );
-  assert.deepEqual(
-    replay.filter((event) => event.type === 'message'),
-    first.filter((event) => event.type === 'message'),
-  );
+  // Replays carry the saved messages; live stream ids are transport details.
+  const saved = (items: ChatEvent[]) =>
+    items.flatMap((event) => (event.type === 'message' ? [event.message] : []));
+  assert.deepEqual(saved(replay), saved(first));
   assert.equal(calls, 1);
   assert.equal(userMessages(privateId), 1);
   await assert.rejects(chatResponse(request('changed text', firstId), user, privateId), {

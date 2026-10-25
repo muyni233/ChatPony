@@ -4,13 +4,7 @@ import { AppError } from './errors';
 import { toCharacter, toConversation, toMessage, toProvider, type Row } from './mappers';
 import { finishCall, getQuota, reserveCall } from './quota';
 import { getSettings, ownConversation } from './repository';
-import {
-  estimateTokens,
-  extractExplicitMemories,
-  memoryCategory,
-  prepareContext,
-  type HistoryEntry,
-} from './ai/context';
+import { estimateTokens, prepareContext, type HistoryEntry } from './ai/context';
 import { findMentions, runCharacterQueue } from './ai/group';
 import { buildMetadataInjection } from './ai/metadata';
 import {
@@ -18,17 +12,31 @@ import {
   generateText,
   maintenanceOutputLimit,
   ModelError,
+  streamText,
+  type ModelMessage,
   type ModelProvider,
 } from './ai/protocols';
 import { personaReference } from './ai/persona';
+import { indexMemoryIds, testEmbeddingModel } from './ai/embeddings';
 import {
-  indexMemoryIds,
-  recallMemories,
-  testEmbeddingModel,
-  type MemoryMatch,
-} from './ai/embeddings';
-import { compressConversation, registerMemoryReply, summarizeMemories } from './ai/maintenance';
-import type { Character, ChatEvent, Conversation, Message, User } from './types';
+  compressConversation,
+  registerMemoryReply,
+  summarizeMemoriesDetailed,
+} from './ai/maintenance';
+import { hybridRecall, maintainMemories, memoryKindLabels, rememberExplicit } from './ai/memory';
+import { attachmentData, attachmentsFor, bindAttachments } from './attachments';
+import type {
+  Character,
+  ChatEvent,
+  Conversation,
+  MemoryRecallResult,
+  Message,
+  User,
+} from './types';
+
+/** At most this many recent user turns keep their pixels in the prompt; older ones keep a marker. */
+const IMAGE_TURNS = 3;
+const MAX_PROMPT_IMAGES = 8;
 
 const LEASE_MS = 180_000;
 const encoder = new TextEncoder();
@@ -72,7 +80,7 @@ function getProvider(providerId: string, requireActive = true): ModelProvider {
 
 async function readInput(
   request: Request,
-): Promise<{ content: string; requestId: string; retryOf?: string }> {
+): Promise<{ content: string; requestId: string; retryOf?: string; attachmentIds: string[] }> {
   if (!request.body) throw new AppError(400, 'INVALID_MESSAGE', '请输入消息内容。');
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -104,7 +112,22 @@ async function readInput(
     throw new AppError(400, 'INVALID_JSON', '请求格式无效。');
   }
   const body = input as Record<string, unknown> | null;
-  if (!body || typeof body !== 'object' || typeof body.content !== 'string' || !body.content.trim())
+  const attachmentIds = body && Array.isArray(body.attachmentIds) ? body.attachmentIds : [];
+  if (
+    attachmentIds.length > getSettings().maxImagesPerMessage ||
+    attachmentIds.some((value) => typeof value !== 'string' || !/^[a-f\d-]{36}$/.test(value)) ||
+    new Set(attachmentIds).size !== attachmentIds.length ||
+    (body?.attachmentIds !== undefined && !Array.isArray(body.attachmentIds))
+  )
+    throw new AppError(400, 'INVALID_ATTACHMENTS', '图片数量超出上限或图片编号无效。');
+  if (attachmentIds.length && !getSettings().imageInputEnabled)
+    throw new AppError(403, 'ATTACHMENTS_DISABLED', '管理员暂未开放图片发送。');
+  if (
+    !body ||
+    typeof body !== 'object' ||
+    typeof body.content !== 'string' ||
+    (!body.content.trim() && !attachmentIds.length)
+  )
     throw new AppError(400, 'INVALID_MESSAGE', '请输入消息内容。');
   if (body.content.length > 20_000)
     throw new AppError(413, 'MESSAGE_TOO_LONG', '每条消息最多 20,000 字。');
@@ -121,6 +144,7 @@ async function readInput(
     content: body.content.trim(),
     requestId: body.requestId,
     retryOf: body.retryOf as string | undefined,
+    attachmentIds: attachmentIds as string[],
   };
 }
 
@@ -134,13 +158,22 @@ const streamHeaders = {
   'X-Content-Type-Options': 'nosniff',
 };
 
+function withAttachments(message: Message): Message {
+  const attachments = attachmentsFor([message.id]).get(message.id);
+  return attachments?.length ? { ...message, attachments } : message;
+}
+
 function replayResponse(row: Row, user: User, conversationId: string): Response {
   const db = getDb();
   const events: ChatEvent[] = [];
   const userRow = db
     .query('SELECT * FROM messages WHERE id=? AND conversation_id=?')
     .get(String(row.user_message_id), conversationId) as Row | null;
-  if (userRow) events.push({ type: 'user', message: toMessage(userRow) });
+  if (userRow)
+    events.push({
+      type: 'user',
+      message: withAttachments(toMessage(userRow)),
+    });
   const responseIds: string[] = JSON.parse(String(row.response_ids));
   for (const responseId of responseIds) {
     const message = db
@@ -209,7 +242,7 @@ function systemPrompt(
   characters: Character[],
   user: User,
   provider: ModelProvider,
-  recalled: MemoryMatch[],
+  recalled: MemoryRecallResult[],
   latestContent: string,
 ): string {
   const db = getDb();
@@ -260,9 +293,11 @@ function systemPrompt(
   );
   const manual = db
     .query(
-      "SELECT content FROM memories WHERE user_id=? AND character_id=? AND source='manual' ORDER BY updated_at DESC LIMIT 6",
+      "SELECT id,content FROM memories WHERE user_id=? AND character_id=? AND source='manual' AND status='active' ORDER BY importance DESC,updated_at DESC LIMIT 6",
     )
     .all(user.id, character.id) as Row[];
+  const pinned = new Set(manual.map((row) => String(row.id)));
+  recalled = recalled.filter((match) => !pinned.has(match.id));
   const notes: string[] = [];
   const semantic: string[] = [];
   let used = 0;
@@ -284,50 +319,46 @@ function systemPrompt(
   for (const match of recalled) {
     const remaining = memoryBudget - used;
     if (remaining < 100) break;
-    const snippet = memorySnippet(match.content, Math.min(perMatch, remaining));
+    const snippet = `[${memoryKindLabels[match.kind] || '记忆'}] ${memorySnippet(match.content, Math.min(perMatch, remaining) - 12)}`;
     semantic.push(snippet);
     used += estimateTokens(snippet);
   }
-  return `${base}\n\n用户固定笔记（手动保存）：${JSON.stringify(notes)}\n\n语义检索到的长期记忆（仅本用户与本角色的历史资料；对话经历是当时的原文，不自动代表现实事实）：${JSON.stringify(semantic)}`;
+  return `${base}\n\n用户固定笔记（手动保存）：${JSON.stringify(notes)}\n\n检索到的相关长期记忆（按相关度、重要度与新鲜度排序；仅本用户与本角色的历史资料；角色扮演内容不自动代表现实事实）：${JSON.stringify(semantic)}`;
 }
 
-function remember(userId: string, characterId: string, content: string): string[] {
-  if (!getSettings().automaticMemoryEnabled) return [];
-  const db = getDb();
-  const facts = extractExplicitMemories(content);
-  if (!facts.length) return [];
-  const changed: string[] = [];
-  const existing = db
-    .query(
-      'SELECT id, content, source FROM memories WHERE user_id=? AND character_id=? AND source_message_id IS NULL',
-    )
-    .all(userId, characterId) as Row[];
-  for (const fact of facts) {
-    if (existing.some((memory) => String(memory.content) === fact)) continue;
-    const category = memoryCategory(fact);
-    const previous = category
-      ? existing.find(
-          (memory) =>
-            memory.source === 'auto' && memoryCategory(String(memory.content)) === category,
-        )
-      : undefined;
-    if (previous) {
-      db.query(
-        'UPDATE memories SET content=?,updated_at=? WHERE id=? AND user_id=? AND character_id=?',
-      ).run(fact, now(), String(previous.id), userId, characterId);
-      previous.content = fact;
-      changed.push(String(previous.id));
-    } else if (existing.length < 200) {
-      const memoryId = id();
-      const time = now();
-      db.query(
-        "INSERT INTO memories(id,user_id,character_id,content,source,created_at,updated_at) VALUES(?,?,?,?,'auto',?,?)",
-      ).run(memoryId, userId, characterId, fact, time, time);
-      existing.push({ id: memoryId, content: fact, source: 'auto' });
-      changed.push(memoryId);
+/** Attach pixels for the newest image turns when the model can see them; otherwise keep markers. */
+function resolveImages(
+  messages: ModelMessage[],
+  provider: ModelProvider,
+  userId: string,
+): { messages: ModelMessage[]; droppedForCapability: boolean } {
+  // Legacy text-completion endpoints (an explicit /completions URL) take a flat prompt only.
+  const legacy =
+    /\/completions\/?$/.test(provider.baseUrl) && !/\/chat\/completions\/?$/.test(provider.baseUrl);
+  const vision = provider.capabilities.includes('image') && !legacy;
+  let turns = 0;
+  let images = 0;
+  let droppedForCapability = false;
+  const resolved = [...messages];
+  for (let index = resolved.length - 1; index >= 0; index--) {
+    const message = resolved[index];
+    if (!message.imageRefs?.length) continue;
+    const { imageRefs, ...rest } = message;
+    if (!vision) {
+      if (index === resolved.length - 1) droppedForCapability = true;
+      resolved[index] = rest;
+      continue;
     }
+    if (turns >= IMAGE_TURNS || images >= MAX_PROMPT_IMAGES) {
+      resolved[index] = rest;
+      continue;
+    }
+    const data = attachmentData(userId, imageRefs.slice(0, MAX_PROMPT_IMAGES - images));
+    turns++;
+    images += data.length;
+    resolved[index] = data.length ? { ...rest, images: data } : rest;
   }
-  return changed;
+  return { messages: resolved, droppedForCapability };
 }
 
 export async function chatResponse(
@@ -335,7 +366,10 @@ export async function chatResponse(
   user: User,
   conversationId: string,
 ): Promise<Response> {
-  const { content, requestId, retryOf } = await readInput(request);
+  const { content, requestId, retryOf, attachmentIds } = await readInput(request);
+  const sameAttachments = (messageId: string) =>
+    JSON.stringify((attachmentsFor([messageId]).get(messageId) || []).map((item) => item.id)) ===
+    JSON.stringify(attachmentIds);
   const db = getDb();
   const token = id();
   const prepared = db
@@ -359,7 +393,7 @@ export async function chatResponse(
         const previous = db
           .query('SELECT content FROM messages WHERE id=?')
           .get(String(existing.user_message_id)) as Row | null;
-        if (previous?.content !== content)
+        if (previous?.content !== content || !sameAttachments(String(existing.user_message_id)))
           throw new AppError(409, 'REQUEST_CONFLICT', '该请求编号已用于另一条消息，请重新发送。');
         if (existing.status === 'pending' && liveLock)
           throw new AppError(
@@ -407,7 +441,7 @@ export async function chatResponse(
           .get(conversationId) as Row | null;
         if (!retriedMessage || latest?.id !== retriedMessage.id)
           throw new AppError(409, 'RETRY_NOT_LATEST', '对话已有后续消息，请发送新消息继续。');
-        if (retriedMessage.content !== content)
+        if (retriedMessage.content !== content || !sameAttachments(String(retriedMessage.id)))
           throw new AppError(
             409,
             'RETRY_CONTENT_MISMATCH',
@@ -426,12 +460,13 @@ export async function chatResponse(
         db.query(
           "INSERT INTO messages(id,conversation_id,role,content,request_id,created_at) VALUES(?,?,'user',?,?,?)",
         ).run(messageId, conversationId, content, requestId, time);
+      const attachments = bindAttachments(user.id, conversationId, messageId, attachmentIds);
       db.query(
         'INSERT INTO chat_requests(conversation_id,request_id,user_message_id,created_at,updated_at) VALUES(?,?,?,?,?)',
       ).run(conversationId, requestId, messageId, time, time);
       db.query('UPDATE conversations SET updated_at=? WHERE id=?').run(time, conversationId);
       const message: Message = retriedMessage
-        ? toMessage(retriedMessage)
+        ? { ...toMessage(retriedMessage), ...(attachments.length ? { attachments } : {}) }
         : {
             id: messageId,
             conversationId,
@@ -439,6 +474,7 @@ export async function chatResponse(
             characterId: null,
             content,
             createdAt: time,
+            ...(attachments.length ? { attachments } : {}),
           };
       return { conversation: toConversation(row), message };
     })
@@ -611,7 +647,11 @@ export async function chatResponse(
                     )
                     .all(conversationId, Number(state.summary_boundary)) as Row[]
                 ).reverse();
+                const attachmentMap = attachmentsFor(
+                  historyRows.filter((row) => row.role === 'user').map((row) => String(row.id)),
+                );
                 const history: HistoryEntry[] = historyRows.map((row) => ({
+                  attachmentIds: attachmentMap.get(String(row.id))?.map((item) => item.id),
                   seq: Number(row.seq),
                   role: row.role as HistoryEntry['role'],
                   characterId: row.character_id ? String(row.character_id) : null,
@@ -658,9 +698,9 @@ export async function chatResponse(
                   resolveModel: getProvider,
                   status: (text: string) => emit({ type: 'status', text, characterId }),
                 };
-                let memories: MemoryMatch[] = [];
+                let memories: MemoryRecallResult[] = [];
                 try {
-                  const recall = await recallMemories(
+                  const recall = await hybridRecall(
                     user.id,
                     characterId,
                     history
@@ -673,10 +713,17 @@ export async function chatResponse(
                     },
                   );
                   memories = recall.memories;
-                  if (!recall.enabled && !embeddingNoticeSent) {
+                  if (recall.vectorFailed && !embeddingNoticeSent) {
                     emit({
                       type: 'status',
-                      text: '向量记忆尚未启用，对话经历会先保存，等待管理员配置后索引。',
+                      text: '向量检索暂不可用，本次使用关键词检索长期记忆。',
+                      characterId,
+                    });
+                    embeddingNoticeSent = true;
+                  } else if (!recall.vectorEnabled && !embeddingNoticeSent) {
+                    emit({
+                      type: 'status',
+                      text: '向量记忆尚未启用，本次使用关键词检索长期记忆；对话经历会先保存，等待管理员配置后索引。',
                       characterId,
                     });
                     embeddingNoticeSent = true;
@@ -736,22 +783,53 @@ export async function chatResponse(
                     characterId,
                   });
                 }
+                const promptMessages = resolveImages(context.messages, provider, user.id);
+                if (promptMessages.droppedForCapability)
+                  emit({
+                    type: 'status',
+                    text: `${character.name} 的模型暂不支持识图，图片将以文字占位提示发送。`,
+                    characterId,
+                  });
                 emit({ type: 'status', text: `${character.name} 正在回复…`, characterId });
-                const generated = await generateText(
-                  provider,
-                  { system, messages: context.messages },
-                  {
-                    signal: abort.signal,
-                    requestId: `${conversationId}:${requestId}:${round}`,
-                    audit: {
-                      kind: 'chat',
-                      userId: user.id,
-                      conversationId,
-                      characterId,
-                      requestId,
-                    },
+                const generationOptions = {
+                  signal: abort.signal,
+                  requestId: `${conversationId}:${requestId}:${round}`,
+                  audit: {
+                    kind: 'chat' as const,
+                    userId: user.id,
+                    conversationId,
+                    characterId,
+                    requestId,
                   },
-                );
+                };
+                const streamId = `${requestId}:${round}`;
+                let streamStarted = false;
+                let generated: Awaited<ReturnType<typeof generateText>>;
+                try {
+                  generated = getSettings().streamingEnabled
+                    ? await streamText(
+                        provider,
+                        { system, messages: promptMessages.messages },
+                        {
+                          ...generationOptions,
+                          onDelta: (text) => {
+                            if (!streamStarted) {
+                              streamStarted = true;
+                              emit({ type: 'stream-start', streamId, characterId });
+                            }
+                            emit({ type: 'delta', streamId, text });
+                          },
+                        },
+                      )
+                    : await generateText(
+                        provider,
+                        { system, messages: promptMessages.messages },
+                        generationOptions,
+                      );
+                } catch (error) {
+                  if (streamStarted) emit({ type: 'stream-end', streamId });
+                  throw error;
+                }
                 const replyId = id();
                 const time = now();
                 const nextIds = [...responseIds, replyId];
@@ -771,7 +849,7 @@ export async function chatResponse(
                     "INSERT INTO messages(id,conversation_id,role,character_id,content,created_at) VALUES(?,?,'assistant',?,?,?)",
                   ).run(replyId, conversationId, characterId, generated.text, time);
                   finishCall(reservation!, true);
-                  memoryIds.push(...remember(user.id, characterId, content));
+                  memoryIds.push(...rememberExplicit(user.id, characterId, content));
                   registerMemoryReply(user.id, characterId, replyId);
                   db.query('UPDATE conversations SET updated_at=? WHERE id=? AND lock_token=?').run(
                     time,
@@ -785,7 +863,7 @@ export async function chatResponse(
                 saved = true;
                 rounds = round;
                 responseIds = nextIds;
-                emit({ type: 'message', message });
+                emit({ type: 'message', message, ...(streamStarted ? { streamId } : {}) });
                 if (generated.truncated)
                   emit({
                     type: 'status',
@@ -793,8 +871,16 @@ export async function chatResponse(
                     characterId,
                   });
                 try {
-                  const summaryId = await summarizeMemories(maintenance);
-                  if (summaryId) memoryIds.push(summaryId);
+                  const summary = await summarizeMemoriesDetailed(maintenance);
+                  if (summary.summaryId) memoryIds.push(summary.summaryId);
+                  memoryIds.push(...summary.memoryIds);
+                  const archived = maintainMemories(user.id, characterId);
+                  if (archived)
+                    emit({
+                      type: 'status',
+                      text: `已归档 ${archived} 条长期未使用或已过期的记忆，可在记忆页恢复。`,
+                      characterId,
+                    });
                   const indexing = await indexMemoryIds(memoryIds, {
                     signal: abort.signal,
                     audit: { userId: user.id, conversationId, characterId, requestId },

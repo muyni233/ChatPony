@@ -95,6 +95,13 @@ export interface Conversation {
   updatedAt: string;
   lastMessage: string;
 }
+export interface Attachment {
+  id: string;
+  mime: string;
+  width: number;
+  height: number;
+  size: number;
+}
 export interface Message {
   id: string;
   conversationId: string;
@@ -102,7 +109,17 @@ export interface Message {
   characterId: string | null;
   content: string;
   createdAt: string;
+  attachments?: Attachment[];
 }
+export type MemoryKind =
+  | 'note'
+  | 'fact'
+  | 'preference'
+  | 'relationship'
+  | 'event'
+  | 'plan'
+  | 'summary';
+export type MemoryStatus = 'active' | 'archived';
 export interface Memory {
   id: string;
   userId: string;
@@ -112,9 +129,25 @@ export interface Memory {
   characterColor?: string;
   content: string;
   source: 'manual' | 'auto';
+  kind: MemoryKind;
+  importance: number;
+  status: MemoryStatus;
+  accessCount: number;
+  lastAccessedAt: string | null;
+  expiresAt: string | null;
+  tags: string[];
   createdAt: string;
   updatedAt: string;
   vectorStatus?: 'pending' | 'ready' | 'failed' | 'disabled';
+}
+export interface MemoryRecallResult {
+  id: string;
+  content: string;
+  kind: MemoryKind;
+  importance: number;
+  score: number;
+  relevance: number;
+  routes: ('keyword' | 'vector')[];
 }
 export interface EmbeddingConfig {
   modelId: string;
@@ -172,6 +205,17 @@ export interface PlatformSettings {
   metadataFields: string[];
   metadataTimezone: string;
   metadataCustom: string;
+  streamingEnabled: boolean;
+  imageInputEnabled: boolean;
+  maxImagesPerMessage: number;
+  actionStyleEnabled: boolean;
+  actionMarkers: string[];
+  actionHideMarkers: boolean;
+  memoryStructuredExtraction: boolean;
+  memoryRecallTopK: number;
+  memoryKeywordWeight: number;
+  memoryDecayRate: number;
+  memoryArchiveThreshold: number;
 }
 
 export interface MailConfig {
@@ -283,8 +327,10 @@ export interface Bootstrap {
 }
 export interface ConversationDetail {
   conversation: Conversation;
-  characters: Character[];
+  characters: (Character & { imageInput?: boolean })[];
   messages: Message[];
+  /** True when older messages exist before the first returned message. */
+  hasMore?: boolean;
 }
 export interface AdminOverview {
   users: number;
@@ -295,6 +341,9 @@ export interface AdminOverview {
 export type ChatEvent =
   | { type: 'user'; message: Message }
   | { type: 'status'; text: string; characterId?: string }
-  | { type: 'message'; message: Message }
+  | { type: 'message'; message: Message; streamId?: string }
+  | { type: 'stream-start'; streamId: string; characterId: string }
+  | { type: 'delta'; streamId: string; text: string }
+  | { type: 'stream-end'; streamId: string }
   | { type: 'error'; code: string; message: string }
   | { type: 'done'; quota: QuotaSnapshot; rounds: number; limited: boolean };

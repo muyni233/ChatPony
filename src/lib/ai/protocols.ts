@@ -2,9 +2,18 @@ import type { Protocol, ProviderConfig } from '../types';
 import { beginAudit, finishAudit, reportedUsage, type AuditContext } from '../audit';
 
 export type ModelProvider = ProviderConfig & { apiKey: string };
+export interface ModelImage {
+  mime: string;
+  /** Base64 without the data: prefix. */
+  data: string;
+}
 export interface ModelMessage {
   role: 'user' | 'assistant';
   content: string;
+  /** Only user turns carry images; assistant images are never sent upstream. */
+  images?: ModelImage[];
+  /** Attachment ids resolved to `images` by the chat engine just before sending. */
+  imageRefs?: string[];
 }
 export interface ModelInput {
   system: string;
@@ -163,7 +172,7 @@ export function maintenanceOutputLimit(provider: ModelProvider, visible = 1024):
   return Math.min(provider.maxOutput, Math.max(visible, (provider.thinkingBudget || 0) + 256));
 }
 
-function endpoint(provider: ModelProvider): URL {
+function endpoint(provider: ModelProvider, stream = false): URL {
   assertGenerationConfig(provider);
   let url: URL;
   try {
@@ -199,6 +208,10 @@ function endpoint(provider: ModelProvider): URL {
         const model = provider.model.replace(/^models\//, '');
         path += `/models/${encodeURIComponent(model)}:generateContent`;
       }
+      if (stream) {
+        path = path.replace(/:generateContent$/, ':streamGenerateContent');
+        url.search = '?alt=sse';
+      }
       break;
     default:
       throw new ModelError('PROVIDER_CONFIG', '不支持的模型协议。', 503);
@@ -211,8 +224,10 @@ function mergeTurns(messages: ModelMessage[]): ModelMessage[] {
   const result: ModelMessage[] = [];
   for (const message of messages) {
     const last = result.at(-1);
-    if (last?.role === message.role) last.content += `\n\n${message.content}`;
-    else result.push({ ...message });
+    if (last?.role === message.role) {
+      last.content += `\n\n${message.content}`;
+      if (message.images?.length) last.images = [...(last.images || []), ...message.images];
+    } else result.push({ ...message, images: message.images ? [...message.images] : undefined });
   }
   // Some providers require the first conversational turn to be a user turn.
   if (result[0]?.role === 'assistant')
@@ -222,11 +237,55 @@ function mergeTurns(messages: ModelMessage[]): ModelMessage[] {
   return result;
 }
 
-export function buildModelRequest(provider: ModelProvider, input: ModelInput) {
-  const url = endpoint(provider);
+function anthropicContent(message: ModelMessage): unknown {
+  if (!message.images?.length || message.role !== 'user') return message.content;
+  return [
+    ...message.images.map((image) => ({
+      type: 'image',
+      source: { type: 'base64', media_type: image.mime, data: image.data },
+    })),
+    { type: 'text', text: message.content || '（图片）' },
+  ];
+}
+function openAiChatContent(message: ModelMessage): unknown {
+  if (!message.images?.length || message.role !== 'user') return message.content;
+  return [
+    { type: 'text', text: message.content || '（图片）' },
+    ...message.images.map((image) => ({
+      type: 'image_url',
+      image_url: { url: `data:${image.mime};base64,${image.data}` },
+    })),
+  ];
+}
+function responsesContent(message: ModelMessage): unknown {
+  if (!message.images?.length || message.role !== 'user') return message.content;
+  return [
+    { type: 'input_text', text: message.content || '（图片）' },
+    ...message.images.map((image) => ({
+      type: 'input_image',
+      image_url: `data:${image.mime};base64,${image.data}`,
+    })),
+  ];
+}
+function geminiParts(message: ModelMessage): unknown[] {
+  const parts: unknown[] = [];
+  if (message.role === 'user')
+    for (const image of message.images || [])
+      parts.push({ inline_data: { mime_type: image.mime, data: image.data } });
+  parts.push({ text: message.content || '（图片）' });
+  return parts;
+}
+
+export function buildModelRequest(
+  provider: ModelProvider,
+  input: ModelInput,
+  options: { stream?: boolean } = {},
+) {
+  const stream = Boolean(options.stream);
+  const url = endpoint(provider, stream);
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    Accept: 'application/json',
+    Accept: stream ? 'text/event-stream, application/json' : 'application/json',
   };
   const messages = mergeTurns(input.messages);
   const maxOutput = Math.max(
@@ -243,9 +302,12 @@ export function buildModelRequest(provider: ModelProvider, input: ModelInput) {
       body = {
         model: provider.model,
         system: input.system,
-        messages,
+        messages: messages.map((message) => ({
+          role: message.role,
+          content: anthropicContent(message),
+        })),
         max_tokens: maxOutput,
-        stream: false,
+        stream,
         ...sampling,
         ...reasoning,
       };
@@ -255,10 +317,13 @@ export function buildModelRequest(provider: ModelProvider, input: ModelInput) {
       body = {
         model: provider.model,
         instructions: input.system,
-        input: messages,
+        input: messages.map((message) => ({
+          role: message.role,
+          content: responsesContent(message),
+        })),
         max_output_tokens: maxOutput,
         store: false,
-        stream: false,
+        stream,
         ...sampling,
         ...reasoning,
       };
@@ -269,7 +334,7 @@ export function buildModelRequest(provider: ModelProvider, input: ModelInput) {
         systemInstruction: { parts: [{ text: input.system }] },
         contents: messages.map((message) => ({
           role: message.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: message.content }],
+          parts: geminiParts(message),
         })),
         generationConfig: { maxOutputTokens: maxOutput, ...sampling, ...reasoning },
       };
@@ -293,15 +358,22 @@ export function buildModelRequest(provider: ModelProvider, input: ModelInput) {
             prompt: `${input.system}\n\n${messages.map((message) => `${message.role}: ${message.content}`).join('\n\n')}\n\nassistant:`,
             max_tokens: maxOutput,
             ...sampling,
-            stream: false,
+            stream,
           }
         : {
             model: provider.model,
-            messages: [{ role: 'system', content: input.system }, ...messages],
+            messages: [
+              { role: 'system', content: input.system },
+              ...messages.map((message) => ({
+                role: message.role,
+                content: openAiChatContent(message),
+              })),
+            ],
             ...tokens,
             ...sampling,
             ...reasoning,
-            stream: false,
+            stream,
+            ...(stream ? { stream_options: { include_usage: true } } : {}),
           };
       break;
     }
@@ -582,5 +654,326 @@ export async function generateText(
     throw failureFor(error);
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/** Incremental state for one streamed generation. Exported for protocol tests. */
+export class StreamAccumulator {
+  text = '';
+  truncated = false;
+  inputTokens: number | null = null;
+  outputTokens: number | null = null;
+  constructor(private readonly protocol: Protocol) {}
+
+  /** Returns the newly visible text for one SSE data payload. */
+  push(value: unknown): string {
+    const data = record(value);
+    if (data.error || data.type === 'error' || data.type === 'response.failed')
+      throw new ModelError('PROVIDER_ERROR', '模型服务返回错误，请稍后重试或联系管理员。');
+    let delta = '';
+    switch (this.protocol) {
+      case 'anthropic': {
+        if (data.type === 'message_start') {
+          const usage = record(record(data.message).usage);
+          if (typeof usage.input_tokens === 'number') this.inputTokens = usage.input_tokens;
+        }
+        if (data.type === 'content_block_delta') {
+          const part = record(data.delta);
+          if (part.type === 'text_delta') delta = textValue(part.text);
+        }
+        if (data.type === 'message_delta') {
+          if (record(data.delta).stop_reason === 'max_tokens') this.truncated = true;
+          const usage = record(data.usage);
+          if (typeof usage.output_tokens === 'number') this.outputTokens = usage.output_tokens;
+        }
+        break;
+      }
+      case 'openai-completions': {
+        const usage = record(data.usage);
+        if (typeof usage.prompt_tokens === 'number') this.inputTokens = usage.prompt_tokens;
+        if (typeof usage.completion_tokens === 'number')
+          this.outputTokens = usage.completion_tokens;
+        const choice = record(array(data.choices)[0]);
+        const message = record(choice.delta);
+        delta =
+          textValue(choice.text) ||
+          textValue(message.content) ||
+          array(message.content)
+            .map(record)
+            .filter((part) => part.type === 'text')
+            .map((part) => textValue(part.text))
+            .join('') ||
+          textValue(message.refusal);
+        if (choice.finish_reason === 'length') this.truncated = true;
+        if (choice.finish_reason === 'content_filter')
+          throw new ModelError(
+            'PROVIDER_BLOCKED',
+            '模型服务未能生成此内容，请调整消息后重试。',
+            422,
+          );
+        break;
+      }
+      case 'openai-responses': {
+        if (data.type === 'response.output_text.delta' || data.type === 'response.refusal.delta')
+          delta = textValue(data.delta);
+        if (data.type === 'response.completed' || data.type === 'response.incomplete') {
+          const response = record(data.response);
+          if (
+            response.status === 'incomplete' &&
+            record(response.incomplete_details).reason === 'max_output_tokens'
+          )
+            this.truncated = true;
+          const usage = record(response.usage);
+          if (typeof usage.input_tokens === 'number') this.inputTokens = usage.input_tokens;
+          if (typeof usage.output_tokens === 'number') this.outputTokens = usage.output_tokens;
+        }
+        if (data.type === 'response.cancelled')
+          throw new ModelError('PROVIDER_ERROR', '模型服务未完成生成，请稍后重试。');
+        break;
+      }
+      case 'gemini': {
+        const candidate = record(array(data.candidates)[0]);
+        const reason = textValue(candidate.finishReason);
+        if (
+          record(data.promptFeedback).blockReason ||
+          ['SAFETY', 'RECITATION', 'BLOCKLIST', 'PROHIBITED_CONTENT', 'SPII'].includes(reason)
+        )
+          throw new ModelError(
+            'PROVIDER_BLOCKED',
+            '模型服务未能生成此内容，请调整消息后重试。',
+            422,
+          );
+        delta = array(record(candidate.content).parts)
+          .map(record)
+          .filter((part) => !part.thought)
+          .map((part) => textValue(part.text))
+          .join('');
+        if (reason === 'MAX_TOKENS') this.truncated = true;
+        const usage = record(data.usageMetadata);
+        if (typeof usage.promptTokenCount === 'number') this.inputTokens = usage.promptTokenCount;
+        if (typeof usage.candidatesTokenCount === 'number')
+          this.outputTokens = usage.candidatesTokenCount;
+        break;
+      }
+    }
+    // Leading whitespace is trimmed from the final text; keep the live view consistent with it.
+    if (!this.text && delta) delta = delta.replace(/^\s+/, '');
+    this.text += delta;
+    if (this.text.length > 120_000)
+      throw new ModelError(
+        'PROVIDER_RESPONSE_SIZE',
+        '模型返回内容过长，请联系管理员调整输出长度。',
+      );
+    return delta;
+  }
+
+  result(): ModelResult {
+    if (!this.text.trim())
+      throw new ModelError(
+        'PROVIDER_EMPTY',
+        '模型未返回可显示的内容，请重试或联系管理员调整输出长度。',
+      );
+    return { text: this.text.trim(), truncated: this.truncated };
+  }
+}
+
+/** Splits a byte stream into SSE `data:` payloads, tolerating CRLF and multi-line data. */
+export async function* sseData(
+  body: ReadableStream<Uint8Array>,
+  signal?: AbortSignal,
+): AsyncGenerator<string> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  try {
+    while (true) {
+      signal?.throwIfAborted();
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      buffer += decoder.decode(chunk.value, { stream: true });
+      if (buffer.length > 4_000_000)
+        throw new ModelError('PROVIDER_RESPONSE_SIZE', '模型服务返回的数据过大。');
+      const events = buffer.split(/\r?\n\r?\n/);
+      buffer = events.pop() || '';
+      for (const event of events) {
+        const data = event
+          .split(/\r?\n/)
+          .filter((line) => line.startsWith('data:'))
+          .map((line) => line.slice(5).replace(/^ /, ''))
+          .join('\n');
+        if (data) yield data;
+      }
+    }
+    buffer += decoder.decode();
+    const tail = buffer
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice(5).replace(/^ /, ''))
+      .join('\n');
+    if (tail) yield tail;
+  } finally {
+    try {
+      await reader.cancel();
+    } catch {
+      /* Already closed. */
+    }
+    reader.releaseLock();
+  }
+}
+
+/**
+ * Streams visible text through `onDelta`. Retries happen only before the first
+ * byte; a provider that ignores `stream: true` and answers with JSON still works.
+ */
+export async function streamText(
+  provider: ModelProvider,
+  input: ModelInput,
+  options: {
+    onDelta: (text: string) => void;
+    signal?: AbortSignal;
+    requestId?: string;
+    timeoutMs?: number;
+    idleTimeoutMs?: number;
+    retries?: number;
+    fetcher?: ModelFetch;
+    audit?: AuditContext;
+  },
+): Promise<ModelResult> {
+  const request = buildModelRequest(provider, input, { stream: true });
+  const timeout = new AbortController();
+  const idle = new AbortController();
+  const timer = setTimeout(() => timeout.abort(), options.timeoutMs ?? 300_000);
+  let idleTimer: ReturnType<typeof setTimeout> | undefined;
+  const touch = () => {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => idle.abort(), options.idleTimeoutMs ?? 90_000);
+  };
+  const signal = AbortSignal.any(
+    [timeout.signal, idle.signal, options.signal].filter(Boolean) as AbortSignal[],
+  );
+  if (options.requestId && provider.protocol.startsWith('openai'))
+    request.headers['Idempotency-Key'] = options.requestId;
+  const failureFor = (error: unknown): ModelError => {
+    if (options.signal?.aborted)
+      return new ModelError('CANCELLED', '生成已停止；已完成的回复仍会保留。', 499);
+    if (timeout.signal.aborted || idle.signal.aborted)
+      return new ModelError('PROVIDER_TIMEOUT', '模型响应超时，本次未完成的调用不计入限额。', 504);
+    return error instanceof ModelError
+      ? error
+      : new ModelError('PROVIDER_NETWORK', '无法连接模型服务，请稍后重试或联系管理员。', 502);
+  };
+  try {
+    const attempts = Math.min(2, Math.max(0, options.retries ?? 1)) + 1;
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      signal.throwIfAborted();
+      const audit = options.audit
+        ? beginAudit({
+            ...options.audit,
+            kind: options.audit.kind || 'chat',
+            supplierId: provider.supplierId,
+            modelId: provider.id,
+            requestId: options.audit.requestId || options.requestId,
+            protocol: provider.protocol,
+            model: provider.model,
+            endpoint: request.url,
+            attempt: attempt + 1,
+            requestBody: request.body,
+            secrets: [provider.apiKey],
+          })
+        : null;
+      let httpStatus: number | undefined;
+      const accumulator = new StreamAccumulator(provider.protocol);
+      try {
+        touch();
+        const response = await (options.fetcher ?? fetch)(request.url, {
+          method: 'POST',
+          headers: request.headers,
+          body: JSON.stringify(request.body),
+          signal,
+          redirect: 'error',
+          cache: 'no-store',
+        });
+        httpStatus = response.status;
+        if (!response.ok) {
+          const retry = [429, 503].includes(response.status) && attempt < attempts - 1;
+          const retryAfter = Number(response.headers.get('retry-after'));
+          await response.body?.cancel();
+          const failure = httpError(response.status);
+          finishAudit(audit, {
+            status: 'failed',
+            httpStatus,
+            errorCode: failure.code,
+            errorMessage: failure.message,
+            responseBody: { error: failure.message },
+          });
+          if (retry) {
+            await delay(
+              Math.max(
+                100,
+                Math.min(
+                  3_000,
+                  Number.isFinite(retryAfter) && retryAfter > 0
+                    ? retryAfter * 1_000
+                    : 500 * (attempt + 1),
+                ),
+              ),
+              signal,
+            );
+            continue;
+          }
+          throw failure;
+        }
+        let result: ModelResult;
+        let usage: { inputTokens: number | null; outputTokens: number | null };
+        if (!response.headers.get('content-type')?.includes('text/event-stream')) {
+          const payload = await boundedJson(response);
+          usage = reportedUsage(payload);
+          result = parseModelResponse(provider.protocol, payload);
+          options.onDelta(result.text);
+        } else {
+          if (!response.body)
+            throw new ModelError('PROVIDER_INVALID', '模型服务返回了无效的数据。');
+          for await (const data of sseData(response.body, signal)) {
+            touch();
+            if (data.trim() === '[DONE]') break;
+            let payload: unknown;
+            try {
+              payload = JSON.parse(data);
+            } catch {
+              continue; // Comments and keep-alive frames carry no JSON.
+            }
+            const delta = accumulator.push(payload);
+            if (delta) options.onDelta(delta);
+          }
+          result = accumulator.result();
+          usage = { inputTokens: accumulator.inputTokens, outputTokens: accumulator.outputTokens };
+        }
+        finishAudit(audit, {
+          status: 'success',
+          httpStatus,
+          ...usage,
+          responseBody: { text: result.text, truncated: result.truncated, stream: true },
+        });
+        return result;
+      } catch (error) {
+        const failure = failureFor(error);
+        finishAudit(audit, {
+          status: failure.code === 'CANCELLED' ? 'cancelled' : 'failed',
+          httpStatus,
+          inputTokens: accumulator.inputTokens,
+          outputTokens: accumulator.outputTokens,
+          errorCode: failure.code,
+          errorMessage: failure.message,
+          responseBody: { error: failure.message },
+        });
+        throw failure;
+      }
+    }
+    throw new ModelError('PROVIDER_UNAVAILABLE', '模型服务暂时不可用。');
+  } catch (error) {
+    throw failureFor(error);
+  } finally {
+    clearTimeout(timer);
+    clearTimeout(idleTimer);
   }
 }

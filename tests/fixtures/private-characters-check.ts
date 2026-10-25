@@ -147,7 +147,7 @@ try {
   );
   closeDb();
   db = getDb();
-  assert.equal((db.query('PRAGMA user_version').get() as Row).user_version, 13);
+  assert.equal((db.query('PRAGMA user_version').get() as Row).user_version, 14);
   assert.equal(
     (db.query('SELECT owner_id FROM characters WHERE id=?').get(publicRole.id) as Row).owner_id,
     null,

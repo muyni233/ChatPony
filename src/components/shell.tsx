@@ -29,6 +29,7 @@ import { AuthDialog } from './auth-dialog';
 import { NewChat } from './new-chat';
 import { Avatar, Button, IconButton } from './ui';
 import { api, json } from '@/lib/client';
+import { prefetchConversation } from '@/lib/conversation-cache';
 import { useToday } from '@/lib/use-today';
 
 const nav = [
@@ -195,6 +196,9 @@ export function Shell({ children }: { children: ReactNode }) {
                     <li key={c.id}>
                       <Link
                         href={`/chat/${c.id}`}
+                        onMouseEnter={() => prefetchConversation(data?.user?.id, c.id)}
+                        onFocus={() => prefetchConversation(data?.user?.id, c.id)}
+                        onTouchStart={() => prefetchConversation(data?.user?.id, c.id)}
                         className={`recent-nav-item ${current ? 'active' : ''}`}
                         aria-current={current ? 'page' : undefined}
                         title={c.title}

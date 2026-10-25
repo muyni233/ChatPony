@@ -26,6 +26,14 @@ import { saveCharacterWithAvatar } from '@/lib/character-avatars';
 import { deleteUserCharacter, getUserCharacters, saveUserCharacter } from '@/lib/user-characters';
 import { getAudit, getAuditStats, listAudit } from '@/lib/audit';
 import {
+  ATTACHMENT_JSON_BYTES,
+  attachmentResponse,
+  deleteDraftAttachment,
+  uploadAttachment,
+} from '@/lib/attachments';
+import { hybridRecall, maintainMemories } from '@/lib/ai/memory';
+import { getDb } from '@/lib/db';
+import {
   getEmbeddingSettings,
   reindexMemories,
   testEmbedding,
@@ -310,7 +318,19 @@ async function handle(request: Request, context: RouteContext): Promise<Response
       }
     }
     if (path[0] === 'conversations' && path.length === 2) {
-      if (method === 'GET') return json(getConversation(user.id, path[1]));
+      if (method === 'GET') {
+        const params = new URL(request.url).searchParams;
+        const limit = Number(params.get('limit') || 0);
+        const before = params.get('before') || undefined;
+        if (before !== undefined && !/^[a-zA-Z0-9_-]{8,128}$/.test(before))
+          throw new AppError(400, 'VALIDATION_ERROR', '分页参数无效。');
+        return json(
+          getConversation(user.id, path[1], {
+            limit: Number.isInteger(limit) && limit > 0 ? limit : undefined,
+            before,
+          }),
+        );
+      }
       if (method === 'PATCH')
         return json(updateConversation(user.id, path[1], await body(request)));
       if (method === 'DELETE') {
@@ -326,6 +346,55 @@ async function handle(request: Request, context: RouteContext): Promise<Response
     ) {
       rateLimit(request, 'chat', 60, 60 * 1000, user.id);
       return await chatResponse(request, user, path[1]);
+    }
+    if (
+      method === 'POST' &&
+      path[0] === 'conversations' &&
+      path.length === 3 &&
+      path[2] === 'attachments'
+    ) {
+      rateLimit(request, 'attachment-upload', 40, 60 * 1000, user.id);
+      return json(
+        await uploadAttachment(user.id, path[1], await body(request, ATTACHMENT_JSON_BYTES)),
+        201,
+      );
+    }
+    if (path[0] === 'attachments' && path.length === 2 && /^[a-f\d-]{36}$/.test(path[1])) {
+      if (method === 'GET') return attachmentResponse(user.id, path[1]);
+      if (method === 'DELETE') {
+        deleteDraftAttachment(user.id, path[1]);
+        return json({ ok: true });
+      }
+    }
+    if (method === 'GET' && route === 'memories/search') {
+      rateLimit(request, 'memory-search', 30, 60 * 1000, user.id);
+      const params = new URL(request.url).searchParams;
+      const characterId = params.get('characterId') || '';
+      const query = (params.get('q') || '').trim();
+      if (!query || query.length > 500 || !characterId || characterId.length > 100)
+        throw new AppError(400, 'VALIDATION_ERROR', '请选择角色并输入 1–500 字的检索内容。');
+      if (
+        !getDb()
+          .query('SELECT id FROM characters WHERE id=? AND (owner_id IS NULL OR owner_id=?)')
+          .get(characterId, user.id)
+      )
+        throw new AppError(404, 'NOT_FOUND', '角色不存在。');
+      return json(
+        await hybridRecall(user.id, characterId, query, {
+          reinforce: false,
+          signal: request.signal,
+          audit: { userId: user.id, characterId },
+        }),
+      );
+    }
+    if (method === 'POST' && route === 'memories/maintain') {
+      rateLimit(request, 'memory-maintain', 5, 60 * 1000, user.id);
+      const owners = getDb()
+        .query('SELECT DISTINCT character_id FROM memories WHERE user_id=?')
+        .all(user.id) as { character_id: string }[];
+      let archived = 0;
+      for (const owner of owners) archived += maintainMemories(user.id, owner.character_id, true);
+      return json({ archived });
     }
     if (route === 'memories') {
       if (method === 'GET') return json(listMemories(user.id));

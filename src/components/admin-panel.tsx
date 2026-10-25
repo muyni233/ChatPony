@@ -2667,22 +2667,44 @@ function SettingsEditor({
   const [hiddenSymbolsText, setHiddenSymbolsText] = useState(
     (settings.hiddenSymbols ?? []).join('\n'),
   );
+  const [actionMarkersText, setActionMarkersText] = useState(
+    (settings.actionMarkers ?? []).join('\n'),
+  );
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
   useEffect(() => {
     setDraft(settings);
     setHiddenSymbolsText((settings.hiddenSymbols ?? []).join('\n'));
+    setActionMarkersText((settings.actionMarkers ?? []).join('\n'));
   }, [settings]);
   const hiddenSymbols = [
     ...new Set(hiddenSymbolsText.split(/\r?\n/).filter((value) => value.length > 0)),
   ];
-  const dirty = JSON.stringify({ ...draft, hiddenSymbols }) !== JSON.stringify(settings);
+  const actionMarkers = [
+    ...new Set(
+      actionMarkersText
+        .split(/\r?\n/)
+        .map((value) => value.trim().replace(/\s+/g, ' '))
+        .filter(Boolean),
+    ),
+  ];
+  const dirty =
+    JSON.stringify({ ...draft, hiddenSymbols, actionMarkers }) !== JSON.stringify(settings);
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (pending) return;
     setError('');
     if (hiddenSymbols.length > 20 || hiddenSymbols.some((symbol) => symbol.length > 20)) {
       setError('最多配置 20 条隐藏符号，每条不超过 20 字。');
+      return;
+    }
+    if (
+      actionMarkers.length > 10 ||
+      actionMarkers.some((marker) => !/^\S{1,10} \S{1,10}$/.test(marker))
+    ) {
+      setError(
+        '动作标记每行一对，格式为「开始符号 空格 结束符号」，例如 * * 或 （ ），最多 10 对。',
+      );
       return;
     }
     setPending(true);
@@ -2698,6 +2720,12 @@ function SettingsEditor({
           siteDescription: draft.siteDescription,
           bubbleDelimiter: draft.bubbleDelimiter,
           hiddenSymbols,
+          streamingEnabled: draft.streamingEnabled,
+          imageInputEnabled: draft.imageInputEnabled,
+          maxImagesPerMessage: draft.maxImagesPerMessage,
+          actionStyleEnabled: draft.actionStyleEnabled,
+          actionMarkers,
+          actionHideMarkers: draft.actionHideMarkers,
           auditCaptureContent: draft.auditCaptureContent,
           auditRetentionDays: draft.auditRetentionDays,
         }),
@@ -2893,6 +2921,68 @@ function SettingsEditor({
               <FileText size={17} />
               先按分隔符拆分气泡，再隐藏所列符号。仅影响消息展示、复制与导出，原始消息及模型上下文保持不变。
             </div>
+            <Toggle
+              checked={draft.streamingEnabled}
+              onChange={(value) =>
+                setDraft((previous) => ({ ...previous, streamingEnabled: value }))
+              }
+              label="流式输出"
+              description="角色回复逐字显示。上游不支持流式时会自动回退为整段返回，计费与审查记录不变。"
+            />
+            <Toggle
+              checked={draft.actionStyleEnabled}
+              onChange={(value) =>
+                setDraft((previous) => ({ ...previous, actionStyleEnabled: value }))
+              }
+              label="动作描写特殊显示"
+              description="将 *动作* 或（动作）等标记包裹的内容显示为旁白样式；整段都是动作时以叙述块呈现。"
+            />
+            <Field
+              label="动作标记"
+              hint={`每行一对，格式为「开始符号 空格 结束符号」，按原样匹配；当前 ${actionMarkers.length} 对，最多 10 对。**粗体** 不会被识别为动作。`}
+            >
+              <textarea
+                rows={3}
+                maxLength={300}
+                placeholder={'* *\n（ ）'}
+                value={actionMarkersText}
+                disabled={!draft.actionStyleEnabled}
+                onChange={(event) => setActionMarkersText(event.target.value)}
+              />
+            </Field>
+            <Toggle
+              checked={draft.actionHideMarkers}
+              onChange={(value) =>
+                setDraft((previous) => ({ ...previous, actionHideMarkers: value }))
+              }
+              label="显示时隐藏动作标记"
+              description="开启后只显示动作文字本身；复制与导出仍保留原文。"
+            />
+            <Toggle
+              checked={draft.imageInputEnabled}
+              onChange={(value) =>
+                setDraft((previous) => ({ ...previous, imageInputEnabled: value }))
+              }
+              label="允许发送图片"
+              description="图片在服务器端重新编码并去除元数据。仅当角色模型勾选「图像」能力时才会把图片发给模型。"
+            />
+            <Field label="每条消息最多图片数" hint="允许 1–8 张。">
+              <input
+                type="number"
+                required
+                min={1}
+                max={8}
+                step={1}
+                disabled={!draft.imageInputEnabled}
+                value={draft.maxImagesPerMessage}
+                onChange={(event) =>
+                  setDraft((previous) => ({
+                    ...previous,
+                    maxImagesPerMessage: Number(event.target.value),
+                  }))
+                }
+              />
+            </Field>
           </div>
         </section>
         <section className="admin-settings-section">

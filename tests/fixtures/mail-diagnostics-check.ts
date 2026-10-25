@@ -193,7 +193,7 @@ const clearRateLimits = () => getDb().query('DELETE FROM rate_limits').run();
 
 try {
   const db = getDb();
-  assert.equal((db.query('PRAGMA user_version').get() as Row).user_version, 13);
+  assert.equal((db.query('PRAGMA user_version').get() as Row).user_version, 14);
   const adminId = id();
   const userId = id();
   const create = db.query(
@@ -491,7 +491,7 @@ try {
   getDb().exec('DROP TABLE mail_deliveries; PRAGMA user_version=11;');
   closeDb();
   const migrated = getDb();
-  assert.equal((migrated.query('PRAGMA user_version').get() as Row).user_version, 13);
+  assert.equal((migrated.query('PRAGMA user_version').get() as Row).user_version, 14);
   assert.ok(
     migrated
       .query("SELECT name FROM sqlite_master WHERE type='table' AND name='mail_deliveries'")

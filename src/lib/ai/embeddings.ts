@@ -800,7 +800,7 @@ export async function recallMemories(
   userId: string,
   characterId: string,
   query: string,
-  options: { signal?: AbortSignal; audit?: AuditContext } = {},
+  options: { signal?: AbortSignal; audit?: AuditContext; limit?: number } = {},
 ): Promise<{ enabled: boolean; memories: MemoryMatch[] }> {
   const assertAccess = () => {
     if (
@@ -844,9 +844,10 @@ export async function recallMemories(
   // Exact cosine search streams rows, avoiding a second full copy of the user's vector corpus.
   const rows = getDb()
     .query(
-      "SELECT m.id,m.content,v.vector,v.content_hash FROM memories m JOIN memory_vectors v ON v.memory_id=m.id WHERE m.user_id=? AND m.character_id=? AND v.status='ready' AND v.fingerprint=? AND v.dimensions=? ORDER BY m.updated_at DESC,m.rowid DESC",
+      "SELECT m.id,m.content,v.vector,v.content_hash FROM memories m JOIN memory_vectors v ON v.memory_id=m.id WHERE m.user_id=? AND m.character_id=? AND m.status='active' AND (m.expires_at IS NULL OR m.expires_at>?) AND v.status='ready' AND v.fingerprint=? AND v.dimensions=? ORDER BY m.updated_at DESC,m.rowid DESC",
     )
-    .iterate(userId, characterId, config.fingerprint, queryVector.length) as Iterable<Row>;
+    .iterate(userId, characterId, now(), config.fingerprint, queryVector.length) as Iterable<Row>;
+  const limit = Math.max(1, Math.min(60, options.limit ?? config.value.topK));
   for (const row of rows) {
     if (row.content_hash !== hash(String(row.content))) continue;
     let vector: number[];
@@ -860,7 +861,7 @@ export async function recallMemories(
     if (similarity === null || similarity < config.value.minSimilarity) continue;
     matches.push({ id: String(row.id), content: String(row.content), similarity });
     matches.sort((left, right) => right.similarity - left.similarity);
-    if (matches.length > config.value.topK) matches.pop();
+    if (matches.length > limit) matches.pop();
   }
   return { enabled: true, memories: matches };
 }

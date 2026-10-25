@@ -3549,3 +3549,245 @@ html[data-reduce-motion='true'] *::after {
   transition-duration: 0.01ms !important;
   scroll-behavior: auto !important;
 }
+
+/* ---------- Role-play action/narration ---------- */
+.rp-action {
+  color: var(--text-2);
+  font-style: italic;
+  font-family: var(--font-serif, inherit);
+  background: color-mix(in srgb, var(--tape-mustard) 26%, transparent);
+  border-radius: 3px;
+  padding: 0 0.22em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+.message-bubble.message-bubble-action {
+  border-style: dashed;
+  border-color: var(--border-strong);
+  background: color-mix(in srgb, var(--surface-2) 70%, transparent);
+  box-shadow: none;
+}
+.message-bubble.message-bubble-action .rp-action {
+  background: none;
+  padding: 0;
+}
+
+/* ---------- Streaming draft ---------- */
+.message-bubble-streaming::after {
+  content: '';
+  display: inline-block;
+  width: 0.5em;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  border-radius: 1px;
+  background: var(--primary);
+  animation: chat-caret 1s steps(2, start) infinite;
+}
+.message-bubble-streaming:empty {
+  min-width: 46px;
+  min-height: 40px;
+}
+@keyframes chat-caret {
+  to {
+    visibility: hidden;
+  }
+}
+[data-reduce-motion='true'] .message-bubble-streaming::after {
+  animation: none;
+}
+
+/* ---------- Image attachments ---------- */
+.message-images {
+  display: grid;
+  gap: 6px;
+  max-width: min(420px, 100%);
+  margin-bottom: 6px;
+}
+.message-images-2,
+.message-images-4 {
+  grid-template-columns: repeat(2, 1fr);
+}
+.message-images-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+.message-image {
+  display: block;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface-sunken);
+  cursor: zoom-in;
+}
+.message-image img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 320px;
+  object-fit: cover;
+}
+.message-images-2 .message-image img,
+.message-images-3 .message-image img,
+.message-images-4 .message-image img {
+  aspect-ratio: 1;
+  max-height: none;
+}
+.message-user .message-images {
+  justify-self: end;
+}
+.composer-images {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 0;
+}
+.composer-image {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface-sunken);
+}
+.composer-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.composer-image-uploading img {
+  opacity: 0.55;
+}
+.composer-image-error {
+  border-color: var(--stamp);
+}
+.composer-image-state {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text);
+}
+.composer-image-error .composer-image-state {
+  color: var(--stamp);
+  background: var(--stamp-soft);
+}
+.composer-image-remove {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(20 23 20 / 0.62);
+  color: #fff;
+  cursor: pointer;
+}
+.composer-image-hint {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--text-3);
+  font-size: 12px;
+}
+.chat-composer-dragging {
+  outline: 2px dashed var(--primary);
+  outline-offset: 2px;
+}
+.image-preview {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+}
+.image-preview img {
+  max-width: 100%;
+  max-height: 70vh;
+  width: auto;
+  height: auto;
+  border-radius: 8px;
+}
+
+/* ---------- Paged history ---------- */
+.chat-older {
+  display: flex;
+  justify-content: center;
+  padding: 4px 0 12px;
+}
+.chat-older .text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.spin {
+  animation: chat-spin 0.9s linear infinite;
+}
+@keyframes chat-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+[data-reduce-motion='true'] .spin {
+  animation: none;
+}
+
+/* ---------- Memory lifecycle ---------- */
+.memory-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  color: var(--text-3);
+  font-size: 12px;
+}
+.memory-importance {
+  position: relative;
+  width: 52px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  overflow: hidden;
+}
+.memory-importance > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: var(--primary);
+}
+.memory-tag {
+  color: var(--text-2);
+}
+.recall-results {
+  margin-top: 16px;
+  display: grid;
+  gap: 10px;
+}
+.recall-results ol {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.recall-results li {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+.recall-results li p {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+}
+.recall-result-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-3);
+  font-size: 12px;
+}

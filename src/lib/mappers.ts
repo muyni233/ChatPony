@@ -117,6 +117,17 @@ export function toMemory(row: Row): Memory {
       : {}),
     content: String(row.content),
     source: row.source === 'auto' ? 'auto' : 'manual',
+    kind: (['note', 'fact', 'preference', 'relationship', 'event', 'plan', 'summary'].includes(
+      String(row.kind),
+    )
+      ? String(row.kind)
+      : 'note') as Memory['kind'],
+    importance: row.importance == null ? 0.5 : Number(row.importance),
+    status: row.status === 'archived' ? 'archived' : 'active',
+    accessCount: Number(row.access_count || 0),
+    lastAccessedAt: row.last_accessed_at ? String(row.last_accessed_at) : null,
+    expiresAt: row.expires_at ? String(row.expires_at) : null,
+    tags: list(row.tags),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   };

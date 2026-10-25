@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
-const SCHEMA_VERSION = 13;
+const SCHEMA_VERSION = 14;
 const globalDb = globalThis as typeof globalThis & {
   __chatponyDb?: Database;
   __chatponyDbPath?: string;
@@ -405,7 +405,66 @@ export function getDb(): Database {
         }
       }
     }
-    db.exec('PRAGMA user_version=13');
+    // v14: image attachments, paged message reads and the LivingMemory-style memory lifecycle.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS message_attachments (
+        id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        message_id TEXT REFERENCES messages(id) ON DELETE CASCADE,
+        mime TEXT NOT NULL, width INTEGER NOT NULL, height INTEGER NOT NULL, size INTEGER NOT NULL,
+        data BLOB NOT NULL, position INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS message_attachments_message ON message_attachments(message_id,position);
+      CREATE INDEX IF NOT EXISTS message_attachments_orphans ON message_attachments(user_id,message_id,created_at);
+      CREATE INDEX IF NOT EXISTS messages_conversation_seq ON messages(conversation_id);
+    `);
+    const lifecycleColumns = db.query('PRAGMA table_info(memories)').all() as { name: string }[];
+    const addMemoryColumn = (name: string, definition: string) => {
+      if (!lifecycleColumns.some((column) => column.name === name))
+        db.exec(`ALTER TABLE memories ADD COLUMN ${name} ${definition}`);
+    };
+    addMemoryColumn('kind', "TEXT NOT NULL DEFAULT 'note'");
+    addMemoryColumn('importance', 'REAL NOT NULL DEFAULT 0.5');
+    addMemoryColumn('status', "TEXT NOT NULL DEFAULT 'active'");
+    addMemoryColumn('access_count', 'INTEGER NOT NULL DEFAULT 0');
+    addMemoryColumn('last_accessed_at', 'TEXT');
+    addMemoryColumn('expires_at', 'TEXT');
+    addMemoryColumn('tags', "TEXT NOT NULL DEFAULT '[]'");
+    db.exec(
+      'CREATE INDEX IF NOT EXISTS memories_lifecycle ON memories(user_id,character_id,status,updated_at)',
+    );
+    const stateColumns = db.query('PRAGMA table_info(memory_summary_state)').all() as {
+      name: string;
+    }[];
+    if (!stateColumns.some((column) => column.name === 'maintained_at'))
+      db.exec('ALTER TABLE memory_summary_state ADD COLUMN maintained_at TEXT');
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+        content, memory_id UNINDEXED, tokenize='trigram'
+      );
+      CREATE TRIGGER IF NOT EXISTS memories_fts_insert AFTER INSERT ON memories BEGIN
+        INSERT INTO memories_fts(content,memory_id) VALUES(new.content,new.id);
+      END;
+      CREATE TRIGGER IF NOT EXISTS memories_fts_update AFTER UPDATE OF content ON memories BEGIN
+        DELETE FROM memories_fts WHERE memory_id=old.id;
+        INSERT INTO memories_fts(content,memory_id) VALUES(new.content,new.id);
+      END;
+      CREATE TRIGGER IF NOT EXISTS memories_fts_delete AFTER DELETE ON memories BEGIN
+        DELETE FROM memories_fts WHERE memory_id=old.id;
+      END;
+    `);
+    if (previousVersion < 14) {
+      db.exec(
+        "UPDATE memories SET kind='summary' WHERE source='auto' AND source_message_id LIKE 'summary:%'",
+      );
+      db.exec("UPDATE memories SET importance=0.75 WHERE source='manual'");
+      db.exec(
+        "UPDATE memories SET kind='fact',importance=0.7 WHERE source='auto' AND source_message_id IS NULL",
+      );
+      db.exec('DELETE FROM memories_fts');
+      db.exec('INSERT INTO memories_fts(content,memory_id) SELECT content,id FROM memories');
+    }
+    db.exec('PRAGMA user_version=14');
   }).immediate();
   globalDb.__chatponyDb = db;
   globalDb.__chatponyDbPath = path;

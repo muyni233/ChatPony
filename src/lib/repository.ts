@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { attachmentsFor } from './attachments';
 import { getDb, id, now } from './db';
 import { encrypt } from './crypto';
 import { AppError } from './errors';
@@ -223,6 +224,25 @@ const settingsFields = z
     metadataFields: z.array(z.enum(metadataFieldNames)).max(8),
     metadataTimezone: z.union([z.literal(''), timezone]),
     metadataCustom: z.string().max(2000),
+    streamingEnabled: bool,
+    imageInputEnabled: bool,
+    maxImagesPerMessage: integer(1, 8),
+    actionStyleEnabled: bool,
+    // Each entry is "open close", e.g. "* *" or "（ ）". Literal text, never a regular expression.
+    actionMarkers: z
+      .array(
+        z
+          .string()
+          .max(21)
+          .regex(/^\S{1,10} \S{1,10}$/, '动作标记格式为「开始符号 空格 结束符号」，例如 * *'),
+      )
+      .max(10),
+    actionHideMarkers: bool,
+    memoryStructuredExtraction: bool,
+    memoryRecallTopK: integer(1, 20),
+    memoryKeywordWeight: z.number().min(0).max(1),
+    memoryDecayRate: z.number().min(0).max(0.5),
+    memoryArchiveThreshold: z.number().min(0).max(1),
   })
   .strict();
 
@@ -294,7 +314,30 @@ export function getSettings(): PlatformSettings {
       : [...metadataFieldNames],
     metadataTimezone: typeof values.metadataTimezone === 'string' ? values.metadataTimezone : '',
     metadataCustom: typeof values.metadataCustom === 'string' ? values.metadataCustom : '',
+    streamingEnabled: values.streamingEnabled !== false,
+    imageInputEnabled: values.imageInputEnabled !== false,
+    maxImagesPerMessage: clampNumber(values.maxImagesPerMessage, 1, 8, 4),
+    actionStyleEnabled: values.actionStyleEnabled !== false,
+    actionMarkers: Array.isArray(values.actionMarkers)
+      ? values.actionMarkers.filter(
+          (value): value is string =>
+            typeof value === 'string' && /^\S{1,10} \S{1,10}$/.test(value),
+        )
+      : ['* *', '（ ）'],
+    actionHideMarkers: values.actionHideMarkers !== false,
+    memoryStructuredExtraction: values.memoryStructuredExtraction !== false,
+    memoryRecallTopK: clampNumber(values.memoryRecallTopK, 1, 20, 6),
+    memoryKeywordWeight: clampNumber(values.memoryKeywordWeight, 0, 1, 0.5),
+    memoryDecayRate: clampNumber(values.memoryDecayRate, 0, 0.5, 0.01),
+    memoryArchiveThreshold: clampNumber(values.memoryArchiveThreshold, 0, 1, 0.1),
   };
+}
+
+function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
+  const number = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(number) && value !== null && value !== undefined && value !== ''
+    ? Math.min(max, Math.max(min, number))
+    : fallback;
 }
 
 export function updateSettings(input: Record<string, unknown>): PlatformSettings {
@@ -392,24 +435,86 @@ export function ownConversation(userId: string, conversationId: string): Row {
   return row;
 }
 
-export function getConversation(userId: string, conversationId: string): ConversationDetail {
+/**
+ * Without `limit` every message is returned (exports, tests). The chat view
+ * asks for the newest page and loads older pages with `before` on demand.
+ */
+export function getConversation(
+  userId: string,
+  conversationId: string,
+  page: { limit?: number; before?: string } = {},
+): ConversationDetail {
   const row = ownConversation(userId, conversationId);
   const conversation = toConversation(row);
   const characters = conversation.characterIds.flatMap((characterId) => {
     const character = getDb()
-      .query('SELECT * FROM characters WHERE id=? AND (owner_id IS NULL OR owner_id=?)')
+      .query(
+        'SELECT c.*,p.capabilities AS model_capabilities FROM characters c LEFT JOIN providers p ON p.id=c.provider_id WHERE c.id=? AND (c.owner_id IS NULL OR c.owner_id=?)',
+      )
       .get(characterId, userId) as Row | null;
-    return character ? [toCharacter(character)] : [];
+    if (!character) return [];
+    let capabilities: unknown = [];
+    try {
+      capabilities = JSON.parse(String(character.model_capabilities || '[]'));
+    } catch {
+      /* Treat malformed legacy values as text-only. */
+    }
+    return [
+      {
+        ...toCharacter(character),
+        imageInput: Array.isArray(capabilities) && capabilities.includes('image'),
+      },
+    ];
   });
-  const messages = (
-    getDb()
+  const limit =
+    page.limit && Number.isInteger(page.limit) ? Math.max(1, Math.min(500, page.limit)) : 0;
+  let rows: Row[];
+  let hasMore = false;
+  if (limit) {
+    const anchor = page.before
+      ? (getDb()
+          .query('SELECT rowid AS seq FROM messages WHERE id=? AND conversation_id=?')
+          .get(page.before, conversationId) as Row | null)
+      : null;
+    if (page.before && !anchor) throw new AppError(404, 'NOT_FOUND', '消息不存在。');
+    rows = (
+      getDb()
+        .query(
+          'SELECT * FROM messages WHERE conversation_id=? AND rowid<? ORDER BY rowid DESC LIMIT ?',
+        )
+        .all(
+          conversationId,
+          anchor ? Number(anchor.seq) : Number.MAX_SAFE_INTEGER,
+          limit + 1,
+        ) as Row[]
+    ).reverse();
+    hasMore = rows.length > limit;
+    if (hasMore) rows = rows.slice(1);
+  } else
+    rows = getDb()
       .query('SELECT * FROM messages WHERE conversation_id=? ORDER BY rowid ASC')
-      .all(conversationId) as Row[]
-  ).map(toMessage);
+      .all(conversationId) as Row[];
+  const attachments = attachmentsFor(
+    rows.filter((item) => item.role === 'user').map((item) => String(item.id)),
+  );
+  const messages = rows.map((item) => {
+    const message = toMessage(item);
+    const files = attachments.get(message.id);
+    return files?.length ? { ...message, attachments: files } : message;
+  });
+  const last = page.before
+    ? (getDb()
+        .query('SELECT content FROM messages WHERE conversation_id=? ORDER BY rowid DESC LIMIT 1')
+        .get(conversationId) as Row | null)
+    : null;
   return {
-    conversation: { ...conversation, lastMessage: messages.at(-1)?.content ?? '' },
+    conversation: {
+      ...conversation,
+      lastMessage: page.before ? String(last?.content ?? '') : (messages.at(-1)?.content ?? ''),
+    },
     characters,
     messages,
+    ...(limit ? { hasMore } : {}),
   };
 }
 
@@ -520,6 +625,16 @@ export function deleteConversation(userId: string, conversationId: string): void
   }).immediate();
 }
 
+const memoryKind = z.enum([
+  'note',
+  'fact',
+  'preference',
+  'relationship',
+  'event',
+  'plan',
+  'summary',
+]);
+
 export function listMemories(userId: string): Memory[] {
   return (
     getDb()
@@ -532,7 +647,14 @@ export function listMemories(userId: string): Memory[] {
 
 export function createMemory(userId: string, input: Record<string, unknown>): Memory {
   const data = validated(
-    z.object({ characterId: shortText(100), content: shortText(2000) }).strict(),
+    z
+      .object({
+        characterId: shortText(100),
+        content: shortText(2000),
+        kind: memoryKind.default('note'),
+        importance: z.number().min(0).max(1).default(0.75),
+      })
+      .strict(),
     input,
   );
   found(
@@ -554,9 +676,18 @@ export function createMemory(userId: string, input: Record<string, unknown>): Me
   const timestamp = now();
   getDb()
     .query(
-      "INSERT INTO memories(id,user_id,character_id,content,source,created_at,updated_at) VALUES(?,?,?,?,'manual',?,?)",
+      "INSERT INTO memories(id,user_id,character_id,content,source,kind,importance,created_at,updated_at) VALUES(?,?,?,?,'manual',?,?,?,?)",
     )
-    .run(memoryId, userId, data.characterId, data.content, timestamp, timestamp);
+    .run(
+      memoryId,
+      userId,
+      data.characterId,
+      data.content,
+      data.kind,
+      data.importance,
+      timestamp,
+      timestamp,
+    );
   return annotateMemoryStatus(
     toMemory(found(getDb().query('SELECT * FROM memories WHERE id=?').get(memoryId))),
   );
@@ -567,7 +698,18 @@ export function updateMemory(
   memoryId: string,
   input: Record<string, unknown>,
 ): Memory {
-  const data = validated(z.object({ content: shortText(2000) }).strict(), input);
+  const data = validated(
+    z
+      .object({
+        content: shortText(2000).optional(),
+        kind: memoryKind.optional(),
+        importance: z.number().min(0).max(1).optional(),
+        status: z.enum(['active', 'archived']).optional(),
+      })
+      .strict()
+      .refine((value) => Object.keys(value).length > 0, '没有需要更新的内容'),
+    input,
+  );
   found(
     getDb()
       .query(
@@ -576,9 +718,30 @@ export function updateMemory(
       .get(memoryId, userId, userId),
     '记忆不存在。',
   );
-  getDb()
-    .query("UPDATE memories SET content=?,source='manual',updated_at=? WHERE id=? AND user_id=?")
-    .run(data.content, now(), memoryId, userId);
+  const db = getDb();
+  db.transaction(() => {
+    // Editing the wording makes it the user's own memory; status or weight changes do not.
+    if (data.content !== undefined)
+      db.query(
+        "UPDATE memories SET content=?,source='manual',updated_at=? WHERE id=? AND user_id=?",
+      ).run(data.content, now(), memoryId, userId);
+    if (data.kind !== undefined)
+      db.query('UPDATE memories SET kind=? WHERE id=? AND user_id=?').run(
+        data.kind,
+        memoryId,
+        userId,
+      );
+    if (data.importance !== undefined)
+      db.query('UPDATE memories SET importance=? WHERE id=? AND user_id=?').run(
+        data.importance,
+        memoryId,
+        userId,
+      );
+    if (data.status !== undefined)
+      db.query(
+        "UPDATE memories SET status=?,expires_at=CASE WHEN ?='active' AND expires_at<=? THEN NULL ELSE expires_at END,last_accessed_at=CASE WHEN ?='active' THEN ? ELSE last_accessed_at END WHERE id=? AND user_id=?",
+      ).run(data.status, data.status, now(), data.status, now(), memoryId, userId);
+  })();
   return annotateMemoryStatus(
     toMemory(
       found(getDb().query('SELECT * FROM memories WHERE id=? AND user_id=?').get(memoryId, userId)),
