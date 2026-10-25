@@ -1,4 +1,5 @@
 'use client';
+import { TriangleAlert } from 'lucide-react';
 import { Button, EmptyState } from '@/components/ui';
 export default function ErrorPage({
   reset,
@@ -7,10 +8,13 @@ export default function ErrorPage({
   reset: () => void;
 }) {
   return (
-    <EmptyState
-      title="页面暂时没有打开"
-      description="出现了意外问题，你可以重试。已保存的对话不会丢失。"
-      action={<Button onClick={reset}>重新加载</Button>}
-    />
+    <div className="card status-page" role="alert">
+      <EmptyState
+        icon={<TriangleAlert size={22} strokeWidth={1.7} />}
+        title="页面加载失败"
+        description="已保存的对话不受影响。"
+        action={<Button onClick={reset}>重新加载</Button>}
+      />
+    </div>
   );
 }

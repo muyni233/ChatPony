@@ -8,7 +8,10 @@ import {
   Eye,
   KeyRound,
   LogOut,
+  Monitor,
+  Moon,
   Pin,
+  Sun,
   ShieldCheck,
   UserRound,
 } from 'lucide-react';
@@ -40,11 +43,7 @@ export function AnnouncementsPage() {
   const items = announcements || data?.announcements || [];
   return (
     <div className="page-enter">
-      <PageHeading
-        eyebrow="NEWS & LITTLE UPDATES"
-        title="公告中心"
-        description="平台的新消息、功能更新与运营通知，都在这里。"
-      />
+      <PageHeading title="公告" />
       {error && (
         <div className="form-error" role="alert">
           {error}{' '}
@@ -54,22 +53,21 @@ export function AnnouncementsPage() {
         </div>
       )}
       {loading ? (
-        <Loading />
+        <Loading variant="list" />
       ) : items.length ? (
         <div className="announcement-list">
           {items.map((a) => (
-            <article key={a.id} className="paper-card announcement-card">
+            <article
+              key={a.id}
+              className={`paper-card announcement-card ${a.pinned ? 'announcement-pinned' : ''}`}
+            >
               <div className="announcement-meta">
-                <Badge tone={a.pinned ? 'pink' : 'green'}>
-                  {a.pinned ? (
-                    <>
-                      <Pin size={11} />
-                      置顶公告
-                    </>
-                  ) : (
-                    '平台动态'
-                  )}
-                </Badge>
+                {a.pinned && (
+                  <span className="pin-mark">
+                    <Pin size={12} aria-hidden="true" />
+                    置顶
+                  </span>
+                )}
                 <time>
                   {dateLabel(a.createdAt, { year: 'numeric', month: 'long', day: 'numeric' })}
                 </time>
@@ -81,11 +79,7 @@ export function AnnouncementsPage() {
         </div>
       ) : (
         <div className="paper-card">
-          <EmptyState
-            icon={<Bell size={27} />}
-            title="暂时没有新的公告"
-            description="平台发布的通知与更新将展示在这里。你可以稍后再来看看。"
-          />
+          <EmptyState icon={<Bell size={27} />} title="暂无公告" />
         </div>
       )}
     </div>
@@ -93,7 +87,7 @@ export function AnnouncementsPage() {
 }
 
 export function SettingsPage() {
-  const { data, loading, refresh, notify } = useApp();
+  const { data, loading, refresh, notify, theme, setTheme } = useApp();
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -150,7 +144,7 @@ export function SettingsPage() {
       await refresh();
       setLogoutOpen(false);
       router.push('/');
-      notify('已安全退出登录。');
+      notify('已退出登录。');
     } catch (e) {
       notify((e as Error).message, 'error');
     } finally {
@@ -178,15 +172,11 @@ export function SettingsPage() {
   ];
   return (
     <div className="page-enter">
-      <PageHeading
-        eyebrow="MAKE YOURSELF AT HOME"
-        title="账户设置"
-        description="调整个人资料、管理账户安全，查看你的使用额度。"
-      />
+      <PageHeading title="设置" />
       {loading ? (
         <Loading />
       ) : !user ? (
-        <AuthRequired title="登录后，管理你的账户" />
+        <AuthRequired title="请先登录" />
       ) : (
         <div className="settings-grid">
           <div className="settings-main">
@@ -200,7 +190,7 @@ export function SettingsPage() {
                 <div>
                   <strong>{user.name}</strong>
                   <p>{user.email}</p>
-                  <Badge tone="green">{user.role === 'admin' ? '平台管理员' : '已注册用户'}</Badge>
+                  {user.role === 'admin' && <Badge tone="green">管理员</Badge>}
                   {user.emailVerifiedAt && (
                     <Badge tone="green">
                       <Check size={11} />
@@ -228,7 +218,7 @@ export function SettingsPage() {
                 <Field label="邮箱">
                   <input type="email" disabled value={user.email} readOnly />
                 </Field>
-                <Field label="时区" hint="角色会根据这个时区获知当地日期、时间、节日与节气。">
+                <Field label="时区" hint="角色按此时区获取当前日期、时间和节日。">
                   <Select name="timezone" defaultValue={user.timezone}>
                     {!timezones.includes(user.timezone) && <option>{user.timezone}</option>}
                     {timezones.map((tz) => (
@@ -300,13 +290,39 @@ export function SettingsPage() {
                 <Eye size={19} />
                 显示偏好
               </h2>
+              <div className="toggle-row theme-row">
+                <span>界面主题</span>
+                <div className="segmented" role="radiogroup" aria-label="界面主题">
+                  {(
+                    [
+                      ['system', '跟随系统', Monitor],
+                      ['light', '浅色', Sun],
+                      ['dark', '深色', Moon],
+                    ] as const
+                  ).map(([value, label, Icon]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      role="radio"
+                      aria-checked={theme === value}
+                      className={theme === value ? 'selected' : ''}
+                      onClick={() => setTheme(value)}
+                    >
+                      <Icon size={14} aria-hidden="true" />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <label className="toggle-row">
                 <span>
                   减少动态效果
-                  <small>关闭位移动画与装饰动效，系统的减少动态效果设置同样生效。</small>
+                  <small>减少界面动画。系统开启此选项时自动生效。</small>
                 </span>
                 <input
                   type="checkbox"
+                  role="switch"
+                  className="switch"
                   checked={reduced}
                   onChange={(e) => toggleMotion(e.target.checked)}
                 />
@@ -317,7 +333,7 @@ export function SettingsPage() {
                 <LogOut size={18} />
                 退出登录
               </h2>
-              <p className="field-hint">退出后，你的对话和记忆会继续安全保存在账户中。</p>
+              <p className="field-hint">退出后对话和记忆仍保留在账户中。</p>
               <Button variant="secondary" onClick={() => setLogoutOpen(true)}>
                 退出当前账户
               </Button>
@@ -328,7 +344,7 @@ export function SettingsPage() {
             <section className="paper-card settings-card">
               <h2>
                 <Clock3 size={18} />
-                在这里的记录
+                账户统计
               </h2>
               <div className="settings-stat">
                 <span>加入时间</span>
@@ -336,19 +352,16 @@ export function SettingsPage() {
               </div>
               <div className="settings-stat">
                 <span>对话数量</span>
-                <strong>{data.stats.conversations} 段</strong>
+                <strong>{data.stats.conversations} 个</strong>
               </div>
               <div className="settings-stat">
                 <span>消息数量</span>
                 <strong>{data.stats.messages} 条</strong>
               </div>
               <div className="settings-stat">
-                <span>长期记忆</span>
+                <span>记忆</span>
                 <strong>{data.stats.memories} 条</strong>
               </div>
-              <p className="section-note">
-                对话记录可以在对话页面导出。记忆可在「长期记忆」中单独管理。
-              </p>
             </section>
           </aside>
         </div>
@@ -357,7 +370,7 @@ export function SettingsPage() {
         open={logoutOpen}
         onClose={() => !busy && setLogoutOpen(false)}
         title="退出当前账户？"
-        description="已保存的对话与记忆将保留，下次登录后可以继续。"
+        description="对话和记忆会保留。"
       >
         <div className="modal-actions">
           <Button variant="secondary" disabled={!!busy} onClick={() => setLogoutOpen(false)}>

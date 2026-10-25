@@ -289,7 +289,7 @@ class Regression:
         expect(dialog).not_to_be_visible(timeout=15000)
         require(self.api(self.user, '/bootstrap')['user']['id'] == self.user_id, 'Registration did not establish a real browser session.')
         self.api(self.cleanup_admin, '/admin/users/' + self.user_id, 'PATCH', {'limit5h': max(10, self.old_settings['defaultLimit5h']), 'limit7d': max(10, self.old_settings['defaultLimit7d'])})
-        page.get_by_role('button', name=re.compile('开启新对话')).first.click()
+        page.get_by_role('button', name=re.compile('新建对话')).first.click()
         dialog = page.get_by_role('dialog')
         dialog.get_by_role('button', name=re.compile(re.escape(self.name))).click()
         dialog.get_by_role('button', name='开始对话', exact=True).click()

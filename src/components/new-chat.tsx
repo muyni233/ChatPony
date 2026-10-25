@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Check, MessageCircle, Users, ArrowRight, Sparkles, LockKeyhole } from 'lucide-react';
+import { Check, MessageCircle, Users, ArrowRight, UserRound, LockKeyhole } from 'lucide-react';
 import { useApp } from './app-provider';
 import { Avatar, Button, EmptyState, Field, Modal } from './ui';
 import { api, json } from '@/lib/client';
@@ -55,11 +55,12 @@ export function NewChat({
     <Modal
       open={open}
       onClose={() => !busy && onClose()}
-      title="开启新的对话"
-      description="选择对话方式，邀请角色加入你的故事。"
+      title="新建对话"
+      description="选择私聊或群聊，然后选择角色。"
     >
       <div className="choice-tabs">
         <button
+          aria-pressed={kind === 'private'}
           className={kind === 'private' ? 'selected' : ''}
           onClick={() => {
             setKind('private');
@@ -67,18 +68,22 @@ export function NewChat({
           }}
         >
           <MessageCircle size={18} />
-          单角色私聊
+          私聊
         </button>
-        <button className={kind === 'group' ? 'selected' : ''} onClick={() => setKind('group')}>
+        <button
+          aria-pressed={kind === 'group'}
+          className={kind === 'group' ? 'selected' : ''}
+          onClick={() => setKind('group')}
+        >
           <Users size={18} />
-          多角色群聊
+          群聊
         </button>
       </div>
       {!characters.length ? (
         <EmptyState
-          icon={<Sparkles size={24} />}
-          title="还没有可用的角色"
-          description="可以创建自己的私有角色，或等待管理员在角色广场发布角色。"
+          icon={<UserRound size={24} />}
+          title="暂无可用角色"
+          description="你可以在「我的角色」中创建私有角色。"
           action={
             <Link href="/my-characters" className="button button-secondary" onClick={onClose}>
               前往我的角色
@@ -92,6 +97,7 @@ export function NewChat({
             {characters.map((c) => (
               <button
                 key={c.id}
+                aria-pressed={selected.includes(c.id)}
                 className={`character-option ${selected.includes(c.id) ? 'selected' : ''}`}
                 onClick={() =>
                   setSelected(
@@ -122,16 +128,14 @@ export function NewChat({
             ))}
           </div>
           {kind === 'group' && (
-            <p className="field-hint">
-              至少选择 2 位角色。群聊中输入 @角色名称，即可邀请对方回应。
-            </p>
+            <p className="field-hint">至少选择 2 个角色。在群聊中 @角色名 可指定回复。</p>
           )}
           <Field label="对话名称（可选）">
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               maxLength={80}
-              placeholder={kind === 'private' ? '例如：今天的小小分享' : '例如：周末的午后茶会'}
+              placeholder={kind === 'private' ? '例如：随便聊聊' : '例如：周末读书会'}
             />
           </Field>
           {error && (

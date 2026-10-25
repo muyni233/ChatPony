@@ -14,44 +14,39 @@ import {
   Users,
   ArrowUpRight,
   Info,
-  LoaderCircle,
   RefreshCw,
 } from 'lucide-react';
 import { useApp } from './app-provider';
-import { Avatar, Badge, Button, EmptyState, Field, Modal, Select } from './ui';
+import { Avatar, Badge, Button, EmptyState, Field, Modal, Select, Skeleton } from './ui';
 import { NewChat } from './new-chat';
 import { api, dateLabel, json } from '@/lib/client';
 import { visibleMessage } from '@/lib/display';
 import type { Character, Conversation, Memory } from '@/lib/types';
 
 export function PageHeading({
-  eyebrow,
   title,
   description,
   action,
 }: {
-  eyebrow: string;
+  /** Retained for call-site compatibility; the platform header no longer shows eyebrows. */
+  eyebrow?: string;
   title: string;
-  description: string;
+  description?: string;
   action?: React.ReactNode;
 }) {
   return (
     <div className="page-heading">
-      <div>
-        <span className="eyebrow">
-          <span className="tiny-dot" />
-          {eyebrow}
-        </span>
+      <div className="page-heading-text">
         <h1>{title}</h1>
-        <p>{description}</p>
+        {description && <p>{description}</p>}
       </div>
-      {action}
+      {action && <div className="page-heading-actions">{action}</div>}
     </div>
   );
 }
 export function AuthRequired({
-  title = '登录后，继续你的故事',
-  description = '登录账户，即可查看和管理属于你的对话与记忆。',
+  title = '请先登录',
+  description = '登录后可查看对话和记忆。',
 }: {
   title?: string;
   description?: string;
@@ -73,11 +68,31 @@ export function AuthRequired({
     </div>
   );
 }
-export function Loading() {
+export function Loading({ variant = 'grid' }: { variant?: 'grid' | 'list' }) {
   return (
-    <div className="loading-screen" role="status">
-      <LoaderCircle size={20} className="spin" />
-      正在加载你的空间…
+    <div className={`loading-screen loading-${variant}`} role="status" aria-live="polite">
+      <span className="visually-hidden">加载中…</span>
+      {variant === 'grid'
+        ? [0, 1, 2, 3, 4, 5].map((i) => (
+            <div className="card loading-card" key={i} aria-hidden="true">
+              <div className="loading-card-top">
+                <Skeleton width={48} height={48} radius={14} />
+                <Skeleton width={64} height={20} radius={999} />
+              </div>
+              <Skeleton width="45%" height={14} />
+              <Skeleton width="90%" height={10} />
+              <Skeleton width="70%" height={10} />
+            </div>
+          ))
+        : [0, 1, 2, 3].map((i) => (
+            <div className="card loading-row" key={i} aria-hidden="true">
+              <Skeleton width={40} height={40} radius={12} />
+              <span>
+                <Skeleton width="30%" height={13} />
+                <Skeleton width="65%" height={10} />
+              </span>
+            </div>
+          ))}
     </div>
   );
 }
@@ -96,22 +111,18 @@ export function CharactersPage() {
   }
   return (
     <div className="page-enter">
-      <PageHeading
-        eyebrow="MEET YOUR FRIENDS"
-        title="角色广场"
-        description="认识不同的性格，开启属于你们的故事。"
-      />
+      <PageHeading title="角色广场" />
       <div className="toolbar">
         <div className="search-box">
           <Search size={17} />
           <input
             aria-label="搜索角色"
-            placeholder="搜索角色名称、介绍或标签…"
+            placeholder="搜索名称、简介或标签"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
-        <Badge tone="green">{publicCharacters.length} 位角色</Badge>
+        <Badge tone="green">{publicCharacters.length} 个角色</Badge>
       </div>
       {loading ? (
         <Loading />
@@ -125,14 +136,10 @@ export function CharactersPage() {
             >
               <div className="character-card-top">
                 <Avatar name={c.name} src={c.avatar} color={c.color} size="large" />
-                <Badge tone="green">
-                  <span className="tiny-dot" />
-                  可以对话
-                </Badge>
               </div>
               <h3>{c.name}</h3>
               <span className="character-handle">@{c.slug}</span>
-              <p>{c.description || '一位等待与你相遇的朋友。'}</p>
+              <p>{c.description || '暂无简介'}</p>
               <div className="character-tags">
                 {c.tags.map((t) => (
                   <Badge key={t}>{t}</Badge>
@@ -141,7 +148,6 @@ export function CharactersPage() {
               <Button variant="secondary" onClick={() => start(c)}>
                 <MessageCircle size={16} />
                 开始对话
-                <ArrowUpRight size={14} />
               </Button>
             </article>
           ))}
@@ -150,12 +156,8 @@ export function CharactersPage() {
         <div className="paper-card">
           <EmptyState
             icon={<Compass size={28} />}
-            title={query ? '没有找到匹配的角色' : '期待下一次相遇'}
-            description={
-              query
-                ? '试试其他名称或标签。'
-                : '管理员发布角色后，你就可以在这里查看角色介绍、开启私聊或邀请角色加入群聊。'
-            }
+            title={query ? '没有找到匹配的角色' : '暂无角色'}
+            description={query ? '试试其他名称或标签。' : '管理员发布角色后会显示在这里。'}
             action={
               query ? (
                 <Button variant="secondary" onClick={() => setQuery('')}>
@@ -211,9 +213,7 @@ export function ConversationsPage() {
   return (
     <div className="page-enter">
       <PageHeading
-        eyebrow="YOUR CONVERSATIONS"
         title="我的对话"
-        description="每一次回来，都可以从上次的故事继续。"
         action={
           <Button onClick={create}>
             <Plus size={16} />
@@ -222,7 +222,7 @@ export function ConversationsPage() {
         }
       />
       {loading ? (
-        <Loading />
+        <Loading variant="list" />
       ) : !data?.user ? (
         <AuthRequired />
       ) : (
@@ -232,6 +232,7 @@ export function ConversationsPage() {
               {(['all', 'private', 'group'] as const).map((f) => (
                 <button
                   key={f}
+                  aria-pressed={filter === f}
                   className={filter === f ? 'selected' : ''}
                   onClick={() => setFilter(f)}
                 >
@@ -245,7 +246,7 @@ export function ConversationsPage() {
             <div className="search-box">
               <Search size={17} />
               <input
-                placeholder="搜索对话…"
+                placeholder="搜索对话"
                 aria-label="搜索对话"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -278,10 +279,7 @@ export function ConversationsPage() {
                             )}
                           </Badge>
                         </h3>
-                        <p>
-                          {visibleMessage(c.lastMessage, data.settings) ||
-                            '还没有消息，来打个招呼吧。'}
-                        </p>
+                        <p>{visibleMessage(c.lastMessage, data.settings) || '暂无消息'}</p>
                       </div>
                       <time>{dateLabel(c.updatedAt)}</time>
                     </Link>
@@ -300,16 +298,12 @@ export function ConversationsPage() {
             <div className="paper-card">
               <EmptyState
                 icon={<MessageCircle size={27} />}
-                title={query ? '没有找到匹配的对话' : '还没有开始的故事'}
-                description={
-                  query
-                    ? '试试其他关键词，或更换对话分类。'
-                    : '选择一位角色开始私聊，或邀请几位朋友加入群聊。'
-                }
+                title={query ? '没有找到匹配的对话' : '暂无对话'}
+                description={query ? '试试其他关键词，或更换对话分类。' : '新建一个私聊或群聊。'}
                 action={
                   <Button variant="secondary" onClick={create}>
                     <Plus size={16} />
-                    开启新对话
+                    新建对话
                   </Button>
                 }
               />
@@ -321,8 +315,8 @@ export function ConversationsPage() {
       <Modal
         open={!!remove}
         onClose={() => !busy && setRemove(null)}
-        title="删除这段对话？"
-        description={`「${remove?.title || ''}」的聊天记录和摘要将被永久删除，角色长期记忆会保留。此操作无法撤销。`}
+        title="删除对话？"
+        description={`「${remove?.title || ''}」的消息和摘要将被永久删除，角色记忆会保留。此操作无法撤销。`}
       >
         <div className="modal-actions">
           <Button variant="secondary" disabled={busy} onClick={() => setRemove(null)}>
@@ -447,9 +441,8 @@ export function MemoriesPage() {
   return (
     <div className="page-enter">
       <PageHeading
-        eyebrow="LITTLE THINGS, REMEMBERED"
-        title="长期记忆"
-        description="历史对话会形成向量记忆，按语义相关性用于后续对话。你可以随时管理。"
+        title="记忆"
+        description="角色回复时会检索与当前消息相关的记忆。"
         action={
           data?.user && (
             <Button disabled={!characters.length} onClick={() => edit('new')}>
@@ -462,15 +455,12 @@ export function MemoriesPage() {
       {loading ? (
         <Loading />
       ) : !data?.user ? (
-        <AuthRequired title="把重要的事，留在记忆里" />
+        <AuthRequired title="请先登录" />
       ) : (
         <>
           <div className="page-intro-note">
             <Info size={17} />
-            <span>
-              记忆按用户与角色隔离保存。平台会将对话片段与手动记忆生成向量，按当前消息的语义检索相关内容。管理员启用
-              Embedding 服务后开始索引。
-            </span>
+            <span>记忆按角色分别保存，仅自己可见。管理员启用 Embedding 服务后才会建立索引。</span>
           </div>
           <div className="toolbar">
             <div className="filter-tabs">
@@ -483,7 +473,11 @@ export function MemoriesPage() {
                 <RefreshCw size={14} />
                 重建索引
               </Button>
-              <button className={!filter ? 'selected' : ''} onClick={() => setFilter('')}>
+              <button
+                aria-pressed={!filter}
+                className={!filter ? 'selected' : ''}
+                onClick={() => setFilter('')}
+              >
                 全部记忆<span>{memories.length}</span>
               </button>
             </div>
@@ -573,8 +567,8 @@ export function MemoriesPage() {
             <div className="paper-card">
               <EmptyState
                 icon={<BookHeart size={27} />}
-                title="从一件值得记住的小事开始"
-                description="你的称呼、喜欢的事物、共同经历的故事，都可以成为下一次对话的起点。"
+                title="暂无记忆"
+                description="添加希望角色记住的信息，例如称呼或喜好。"
                 action={
                   <Button
                     variant="secondary"
@@ -582,7 +576,7 @@ export function MemoriesPage() {
                     onClick={() => edit('new')}
                   >
                     <Plus size={15} />
-                    添加第一条记忆
+                    添加记忆
                   </Button>
                 }
               />
@@ -593,8 +587,8 @@ export function MemoriesPage() {
       <Modal
         open={!!editing}
         onClose={() => !busy && setEditing(null)}
-        title={editing === 'new' ? '添加一条记忆' : '编辑记忆'}
-        description="内容会生成向量索引，用于这个角色与你今后对话的语义检索。"
+        title={editing === 'new' ? '添加记忆' : '编辑记忆'}
+        description="保存后建立索引，该角色回复时会检索相关记忆。"
       >
         {editing && (
           <form
@@ -628,7 +622,7 @@ export function MemoriesPage() {
                 maxLength={2000}
                 required
                 defaultValue={editing === 'new' ? '' : editing.content}
-                placeholder="例如：我的昵称是小星，喜欢雨天和读书。"
+                placeholder="例如：我叫小星，喜欢读书。"
               />
             </Field>
             {formError && (
@@ -656,7 +650,7 @@ export function MemoriesPage() {
         open={!!remove}
         onClose={() => !busy && setRemove(null)}
         title="删除这条记忆？"
-        description="删除后，对应的向量索引也会移除，角色将不再通过语义检索获取这条内容。已有聊天记录会保留。"
+        description="删除后，对应的向量索引也会移除，角色将不再通过语义检索获取这条内容。已有对话不受影响。"
       >
         <div className="modal-actions">
           <Button variant="secondary" disabled={busy} onClick={() => setRemove(null)}>

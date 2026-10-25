@@ -2,302 +2,254 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import {
-  ArrowDownRight,
-  ArrowRight,
-  ArrowUpRight,
-  BookHeart,
-  Check,
-  ChevronRight,
-  Compass,
-  Flower2,
-  Heart,
-  MessageCircle,
-  Pin,
-  Plus,
-  Sparkles,
-  Users,
-} from 'lucide-react';
+import { ChevronRight, MessageCircle, Pin, Plus, Users } from 'lucide-react';
 import { useApp } from './app-provider';
-import { Avatar, Badge, Button } from './ui';
-import { JournalArt } from './journal-art';
+import { Avatar, Badge, Button, EmptyState, Skeleton } from './ui';
 import { NewChat } from './new-chat';
 import { QuotaCard } from './quota-card';
 import { dateLabel } from '@/lib/client';
 import { visibleMessage } from '@/lib/display';
 import { useToday } from '@/lib/use-today';
 
-export function Dashboard() {
-  const { data, openAuth } = useApp();
-  const [newChat, setNewChat] = useState<'private' | 'group' | null>(null);
-  const date = useToday();
-  function start(kind: 'private' | 'group') {
-    if (!data?.user) openAuth();
-    else setNewChat(kind);
+function greeting(date: Date | null) {
+  if (!date) return '你好';
+  const h = date.getHours();
+  if (h < 5) return '晚上好';
+  if (h < 11) return '早上好';
+  if (h < 13) return '中午好';
+  if (h < 18) return '下午好';
+  return '晚上好';
+}
+
+/** Today shows the time, this year shows month and day, older entries add the year. */
+function entryDate(value: string, today: Date | null) {
+  const date = new Date(value);
+  if (today && date.toDateString() === today.toDateString()) {
+    return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
   }
-  const announcement = data?.announcements[0];
+  if (today && date.getFullYear() !== today.getFullYear()) {
+    return date.toLocaleDateString('zh-CN', { year: 'numeric', month: 'numeric', day: 'numeric' });
+  }
+  return `${date.getMonth() + 1}月${date.getDate()}日`;
+}
+
+export function Dashboard() {
+  const { data, loading, openAuth } = useApp();
+  const [newChat, setNewChat] = useState<{
+    kind: 'private' | 'group';
+    character?: string;
+  } | null>(null);
+  const today = useToday();
+  function start(kind: 'private' | 'group', character?: string) {
+    if (!data?.user) openAuth();
+    else setNewChat({ kind, character });
+  }
+  const user = data?.user;
+  const characters = data?.characters || [];
+  const publicCharacters = characters.filter((c) => !c.ownerId);
+  const suggested = (publicCharacters.length ? publicCharacters : characters).slice(0, 4);
+  const announcements = (data?.announcements || []).slice(0, 3);
   return (
     <div className="dashboard page-enter">
-      <div className="page-heading">
-        <div>
-          <span className="eyebrow">
-            <span className="tiny-dot" />
-            YOUR LITTLE CORNER OF EQUESTRIA
-          </span>
-          <h1>
-            {data?.user
-              ? `很高兴，又见到你${data.user.name.length < 9 ? `，${data.user.name}` : ''}。`
-              : '很高兴，在这里遇见你。'}
-            <span className="heading-spark">✳</span>
-          </h1>
-          <p>{data?.settings.siteDescription || '放慢一点，和熟悉的朋友，聊些喜欢的事。'}</p>
+      <header className="home-header">
+        <div className="home-header-text">
+          <h1>{user ? `${greeting(today)}，${user.name}` : 'ChatPony'}</h1>
+          {user ? (
+            <p className="home-stats">
+              <Link href="/conversations">{data.stats.conversations} 个对话</Link>
+              <span>{data.stats.messages} 条消息</span>
+              <Link href="/memories">{data.stats.memories} 条记忆</Link>
+            </p>
+          ) : (
+            <p>{data?.settings.siteDescription || 'MLP 主题的 AI 角色对话平台。'}</p>
+          )}
         </div>
-        <div className="date-badge">
-          <span>{date?.toLocaleDateString('en', { month: 'short' }).toUpperCase() || '—'}</span>
-          <strong>{date?.getDate().toString().padStart(2, '0') || '—'}</strong>
-          <small>{date?.toLocaleDateString('zh-CN', { weekday: 'long' }) || '今天'}</small>
-        </div>
-      </div>
-      <section className="welcome-card">
-        <div className="welcome-content">
-          <span className="welcome-label">
-            <Sparkles size={14} />
-            一点日常，一点魔法
-          </span>
-          <h2>
-            让故事，
-            <br />
-            从一句<span className="hand-underline">「你好」</span>开始。
-          </h2>
-          <p>
-            在小马利亚，与你喜爱的角色相遇。
-            <br />
-            让每一次对话，成为友谊的新篇章。
-          </p>
-          <Button onClick={() => start('private')}>
-            开启一段对话
-            <ArrowRight size={17} />
-          </Button>
-          <span className="welcome-footnote">A new page. A new connection.</span>
-        </div>
-        <JournalArt />
-        <span className="welcome-corner">
-          CHAPTER 01 <ArrowDownRight size={17} />
-        </span>
-      </section>
-      <div className="quick-actions">
-        <button onClick={() => start('private')}>
-          <span className="quick-icon mint">
-            <MessageCircle size={21} strokeWidth={1.6} />
-          </span>
-          <span>
-            <strong>和 TA 单独聊聊</strong>
-            <small>专属于你们的对话空间</small>
-          </span>
-          <ArrowUpRight size={18} />
-        </button>
-        <button onClick={() => start('group')}>
-          <span className="quick-icon peach">
-            <Users size={21} strokeWidth={1.6} />
-          </span>
-          <span>
-            <strong>邀请朋友，一起聊</strong>
-            <small>@ 角色，让更多故事发生</small>
-          </span>
-          <ArrowUpRight size={18} />
-        </button>
-        <Link href="/memories">
-          <span className="quick-icon lavender">
-            <BookHeart size={21} strokeWidth={1.6} />
-          </span>
-          <span>
-            <strong>那些被记住的小事</strong>
-            <small>让每一次相遇都不陌生</small>
-          </span>
-          <ArrowUpRight size={18} />
-        </Link>
-      </div>
+        {user && (
+          <div className="home-actions">
+            <Button className="home-action-new" onClick={() => start('private')}>
+              <Plus size={16} />
+              新建对话
+            </Button>
+            <Button variant="secondary" onClick={() => start('group')}>
+              <Users size={16} />
+              新建群聊
+            </Button>
+          </div>
+        )}
+      </header>
+
       <div className="dashboard-columns">
         <div className="dashboard-main-column">
-          <section className="recent-section">
+          <section aria-labelledby="recent-title">
             <div className="section-heading">
-              <h2>
-                <MessageCircle size={19} />
-                最近的对话<span className="section-subtitle">CONTINUE YOUR STORY</span>
-              </h2>
-              <Link href="/conversations">
-                全部对话
-                <ChevronRight size={15} />
-              </Link>
+              <h2 id="recent-title">最近对话</h2>
+              {!!data?.conversations.length && (
+                <Link href="/conversations" className="card-link">
+                  全部
+                  <ChevronRight size={15} />
+                </Link>
+              )}
             </div>
-            {data?.conversations.length ? (
-              <div className="paper-card recent-list">
-                {data.conversations.slice(0, 3).map((c) => {
-                  const character = data.characters.find((ch) => ch.id === c.characterIds[0]);
-                  return (
-                    <Link className="recent-item" href={`/chat/${c.id}`} key={c.id}>
-                      <Avatar
-                        name={c.kind === 'group' ? '群' : character?.name || c.title}
-                        src={c.kind === 'private' ? character?.avatar : undefined}
-                        color={character?.color}
-                      />
-                      <div>
-                        <strong>
-                          {c.title}
-                          {c.kind === 'group' && <Badge>群聊</Badge>}
-                        </strong>
-                        <p>
-                          {visibleMessage(c.lastMessage, data.settings) ||
-                            '故事刚刚开始，打个招呼吧。'}
-                        </p>
-                      </div>
-                      <time>{dateLabel(c.updatedAt)}</time>
-                      <ChevronRight size={15} />
-                    </Link>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="recent-empty paper-card">
-                <div className="empty-chat-art">
-                  <span />
-                  <MessageCircle size={30} strokeWidth={1.1} />
-                  <Sparkles size={17} />
+            <div className="ruled-sheet recent-sheet">
+              {loading ? (
+                <div className="list-skeleton">
+                  {[0, 1, 2].map((i) => (
+                    <div className="list-skeleton-row" key={i}>
+                      <Skeleton width={44} height={30} radius={4} />
+                      <span>
+                        <Skeleton width="34%" height={12} />
+                        <Skeleton width="72%" height={10} />
+                      </span>
+                    </div>
+                  ))}
                 </div>
-                <div>
-                  <h3>这里，留给你们的第一句话</h3>
-                  <p>开启一段对话，之后随时回来继续。</p>
-                  <button className="text-button" onClick={() => start('private')}>
-                    开始我的第一段对话
-                    <ArrowRight size={14} />
-                  </button>
-                </div>
-                <span className="empty-corner-line" />
-              </div>
-            )}
+              ) : data?.conversations.length ? (
+                <ol className="recent-list">
+                  {data.conversations.slice(0, 6).map((c) => {
+                    const character = data.characters.find((ch) => ch.id === c.characterIds[0]);
+                    return (
+                      <li key={c.id}>
+                        <Link className="recent-entry" href={`/chat/${c.id}`}>
+                          <Avatar
+                            name={c.kind === 'group' ? '群' : character?.name || c.title}
+                            src={c.kind === 'private' ? character?.avatar : undefined}
+                            color={character?.color}
+                            size="small"
+                          />
+                          <span className="recent-body">
+                            <strong>
+                              <span className="recent-title">{c.title}</span>
+                              {c.kind === 'group' && <Badge>群聊</Badge>}
+                            </strong>
+                            <span className="recent-excerpt">
+                              {visibleMessage(c.lastMessage, data.settings) || '暂无消息'}
+                            </span>
+                          </span>
+                          <time className="recent-time" dateTime={c.updatedAt}>
+                            {entryDate(c.updatedAt, today)}
+                          </time>
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ol>
+              ) : (
+                <EmptyState
+                  compact
+                  icon={<MessageCircle size={22} strokeWidth={1.6} />}
+                  title={user ? '暂无对话' : '登录后查看对话'}
+                  action={
+                    user ? (
+                      <Button variant="secondary" size="sm" onClick={() => start('private')}>
+                        新建对话
+                      </Button>
+                    ) : undefined
+                  }
+                />
+              )}
+            </div>
           </section>
-          <section className="characters-section">
+
+          <section aria-labelledby="suggested-title">
             <div className="section-heading">
-              <h2>
-                <Compass size={19} />
-                等待相遇<span className="section-subtitle">MEET YOUR FRIENDS</span>
-              </h2>
-              <Link href="/characters">
+              <h2 id="suggested-title">推荐角色</h2>
+              <Link href="/characters" className="card-link">
                 角色广场
                 <ChevronRight size={15} />
               </Link>
             </div>
-            {data?.characters.length ? (
-              <div className="mini-character-grid">
-                {data.characters.slice(0, 3).map((c) => (
-                  <Link href="/characters" className="mini-character paper-card" key={c.id}>
-                    <Avatar name={c.name} src={c.avatar} color={c.color} size="large" />
-                    <h3>{c.name}</h3>
-                    <p>{c.description}</p>
+            {loading ? (
+              <div className="suggested-list">
+                {[0, 1, 2, 3].map((i) => (
+                  <div className="suggested-item" key={i}>
+                    <Skeleton width={36} height={36} radius={8} />
                     <span>
-                      认识一下
-                      <ArrowUpRight size={13} />
+                      <Skeleton width="40%" height={12} />
+                      <Skeleton width="80%" height={10} />
                     </span>
-                  </Link>
+                  </div>
                 ))}
               </div>
+            ) : suggested.length ? (
+              <ul className="suggested-list">
+                {suggested.map((c) => (
+                  <li key={c.id} className="suggested-item">
+                    <Avatar name={c.name} src={c.avatar} color={c.color} size="small" />
+                    <span className="suggested-body">
+                      <strong>{c.name}</strong>
+                      <span>{c.description || '暂无简介'}</span>
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => start('private', c.id)}
+                      aria-label={`与${c.name}对话`}
+                    >
+                      对话
+                    </Button>
+                  </li>
+                ))}
+              </ul>
             ) : (
-              <div className="character-coming paper-card">
-                <div className="coming-art">
-                  <span className="coming-card one">
-                    <Flower2 size={27} strokeWidth={1.2} />
-                  </span>
-                  <span className="coming-card two">
-                    <Sparkles size={28} strokeWidth={1.2} />
-                  </span>
-                  <span className="coming-card three">
-                    <Heart size={26} strokeWidth={1.2} />
-                  </span>
-                </div>
-                <h3>下一位朋友，正在路上</h3>
-                <p>
-                  角色发布后，会在这里与你见面。
-                  <br />
-                  每一份独特的性格，都值得一场特别的相遇。
-                </p>
-                {data?.user?.role === 'admin' ? (
-                  <Link className="text-button" href="/admin">
-                    添加第一位角色
-                    <Plus size={14} />
-                  </Link>
-                ) : (
-                  <span className="coming-tag">
-                    <span className="tiny-dot" />
-                    期待新的相遇
-                  </span>
-                )}
+              <div className="card">
+                <EmptyState
+                  compact
+                  icon={<Users size={22} strokeWidth={1.6} />}
+                  title="暂无角色"
+                  action={
+                    user?.role === 'admin' ? (
+                      <Link className="button button-secondary button-sm" href="/admin">
+                        <Plus size={14} />
+                        添加角色
+                      </Link>
+                    ) : undefined
+                  }
+                />
               </div>
             )}
           </section>
         </div>
-        <aside className="dashboard-aside">
-          <QuotaCard />
-          <section className="notice-card">
-            <span className="tape tape-pink" />
+
+        <aside className="dashboard-aside" aria-label="额度与公告">
+          {user && <QuotaCard />}
+          <section className="card notice-card" aria-labelledby="notice-title">
             <div className="card-heading">
-              <h3>
-                <Pin size={17} />
-                公告栏
-              </h3>
-              <Link href="/announcements" aria-label="查看所有公告">
-                <ArrowUpRight size={17} />
-              </Link>
+              <h3 id="notice-title">公告</h3>
+              {!!announcements.length && (
+                <Link href="/announcements" className="card-link" aria-label="查看全部公告">
+                  全部
+                  <ChevronRight size={15} />
+                </Link>
+              )}
             </div>
-            {announcement ? (
-              <>
-                <Badge tone={announcement.pinned ? 'pink' : 'green'}>
-                  {announcement.pinned ? '置顶公告' : '平台动态'}
-                </Badge>
-                <h4>{announcement.title}</h4>
-                <p>{announcement.content.slice(0, 110)}</p>
-                <Link href="/announcements" className="notice-date">
-                  {dateLabel(announcement.createdAt)}
-                  <ArrowRight size={14} />
-                </Link>
-              </>
+            {announcements.length ? (
+              <ul className="notice-list">
+                {announcements.map((a) => (
+                  <li key={a.id}>
+                    <Link href="/announcements" className="notice-item">
+                      <span className="notice-title">
+                        {a.pinned && <Pin size={12} className="notice-pin" aria-label="置顶" />}
+                        {a.title}
+                      </span>
+                      <time dateTime={a.createdAt}>{dateLabel(a.createdAt)}</time>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
             ) : (
-              <>
-                <Badge tone="green">一切就绪，等待新故事</Badge>
-                <h4>欢迎来到 ChatPony</h4>
-                <p>
-                  平台动态与更新会在这里发布。
-                  <br />
-                  现在，先熟悉一下你的新空间吧。
-                </p>
-                <Link href="/announcements" className="notice-date">
-                  查看公告中心
-                  <ArrowRight size={14} />
-                </Link>
-              </>
+              <p className="notice-empty">暂无公告</p>
             )}
           </section>
-          <div className="little-note">
-            <span className="little-note-star">✧</span>
-            <p>
-              不必有特别的话题，
-              <br />
-              你在这里，就很好。
-            </p>
-            <span>just be yourself.</span>
-          </div>
         </aside>
       </div>
-      <div className="dashboard-bottom">
-        <span>
-          <Check size={13} />
-          对话与记忆，按账户独立保存
-        </span>
-        <span>
-          <Flower2 size={14} />
-          在这里，每个平凡日常都可以有一点魔法
-        </span>
-      </div>
-      {newChat && <NewChat open initialKind={newChat} onClose={() => setNewChat(null)} />}
+      {newChat && (
+        <NewChat
+          open
+          initialKind={newChat.kind}
+          initialCharacter={newChat.character}
+          onClose={() => setNewChat(null)}
+        />
+      )}
     </div>
   );
 }

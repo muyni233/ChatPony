@@ -134,7 +134,7 @@ with sync_playwright() as p:
         dialog.get_by_label('密码', exact=True).fill('Test-only-Password-2026!')
         dialog.get_by_role('button', name='创建账户', exact=True).click()
         expect(dialog).not_to_be_visible(timeout=15000)
-        page.get_by_role('button', name=re.compile('开启新对话')).click()
+        page.get_by_role('button', name=re.compile('新建对话')).first.click()
         dialog = page.get_by_role('dialog')
         dialog.get_by_role('button', name=re.compile(f'E2E Willow.*{slug_a}')).click()
         dialog.get_by_role('button', name='开始对话', exact=True).click()

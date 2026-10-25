@@ -1,15 +1,18 @@
-import { Asterisk, Heart, Sparkles, Star } from 'lucide-react';
+import { Heart, Star } from 'lucide-react';
 
+/**
+ * The dashboard's still life: a postcard tucked behind an envelope, a Ponyville postmark
+ * and a star sticker. Purely decorative and drawn with theme tokens, so it follows the
+ * night-journal palette without its own dark variant.
+ */
 export function JournalArt() {
   return (
     <div className="journal-art" aria-hidden="true">
-      <div className="art-orbit" />
-      <span className="art-twinkle art-twinkle-one">✳</span>
-      <Sparkles className="art-twinkle-two" size={26} strokeWidth={1.2} />
       <div className="art-postcard">
+        <span className="art-postcard-tape" />
         <span className="postcard-lines" />
         <div className="postcard-stamp">
-          <svg viewBox="0 0 66 84" width="33" height="42" aria-hidden="true">
+          <svg viewBox="0 0 66 84" width="33" height="42">
             <path
               d="m33 8 7.4 15 16.6 2.4-12 11.7 2.8 16.5L33 45.8l-14.8 7.8L21 37.1 9 25.4 25.6 23Z"
               fill="currentColor"
@@ -32,45 +35,49 @@ export function JournalArt() {
         <span className="postcard-scribble" />
         <span className="postcard-scribble short" />
         <span className="postcard-scribble" />
-        <Heart size={15} className="postcard-heart" />
+        <Heart size={14} strokeWidth={1.6} className="postcard-heart" />
       </div>
       <div className="art-envelope">
         <div className="envelope-fold" />
         <div className="envelope-seal">
-          <Asterisk size={23} strokeWidth={1.6} />
+          <Heart size={14} strokeWidth={2} />
         </div>
       </div>
-      <div className="art-stamp-circle">
-        <svg viewBox="0 0 176 176" width="88" height="88" aria-hidden="true">
+      <div className="art-postmark">
+        <svg viewBox="0 0 176 176" width="88" height="88">
+          <circle cx="88" cy="88" r="80" fill="none" stroke="currentColor" strokeWidth="3" />
+          <circle cx="88" cy="88" r="66" fill="none" stroke="currentColor" strokeWidth="1.6" />
           <text
             x="88"
-            y="57"
+            y="62"
             textAnchor="middle"
             fontFamily="Georgia, serif"
             fontSize="14"
-            textLength="124"
+            textLength="104"
             lengthAdjust="spacingAndGlyphs"
             fill="currentColor"
           >
-            PONYVILLE POST
+            PONYVILLE
           </text>
-          <g
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.8"
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          >
-            <path d="M88 69 93 82 106 87 93 92 88 105 83 92 70 87 83 82Z" />
-            <path d="M109 65v13m-6.5-6.5h13M66 103v9m-4.5-4.5h9" />
-          </g>
+          <path d="M40 80h96M40 96h96" stroke="currentColor" strokeWidth="1.6" />
           <text
             x="88"
-            y="128"
+            y="93"
+            textAnchor="middle"
+            fontFamily="Georgia, serif"
+            fontSize="13"
+            fontStyle="italic"
+            fill="currentColor"
+          >
+            post
+          </text>
+          <text
+            x="88"
+            y="126"
             textAnchor="middle"
             fontFamily="Georgia, serif"
             fontSize="12"
-            textLength="82"
+            textLength="78"
             lengthAdjust="spacingAndGlyphs"
             fill="currentColor"
           >
@@ -78,13 +85,7 @@ export function JournalArt() {
           </text>
         </svg>
       </div>
-      <div className="rainbow-sticker">
-        <span />
-        <span />
-        <span />
-        <span />
-      </div>
-      <Star className="art-star" size={41} fill="#e9c979" stroke="#cdb15f" strokeWidth={1} />
+      <Star className="art-star" size={36} strokeWidth={1.2} />
       <span className="art-caption">a letter to a new beginning</span>
     </div>
   );

@@ -14,7 +14,7 @@
   margin-bottom: 20px;
 }
 .persona-section-title > svg {
-  color: #849a71;
+  color: var(--primary-text);
 }
 .persona-section-title h2 {
   font-size: 16px;
@@ -35,7 +35,7 @@
 }
 .persona-enabled {
   padding: 0 0 20px;
-  border-bottom: 1px dashed var(--line);
+  border-bottom: 1px solid var(--line);
 }
 .persona-save {
   display: flex;
@@ -44,11 +44,11 @@
   gap: 12px;
   margin-top: 25px;
   padding-top: 21px;
-  border-top: 1px dashed var(--line);
+  border-top: 1px solid var(--line);
 }
 .persona-save > span {
-  font-size: 10px;
-  color: #8b997d;
+  font-size: 11px;
+  color: var(--text-3);
 }
 .persona-preview-column {
   position: sticky;
@@ -57,29 +57,26 @@
 .persona-card {
   position: relative;
   padding: 25px 25px 18px;
-  border: 1px solid #dce3d1;
-  background: #f8faf1;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
   border-radius: 4px;
-  transform: rotate(0.65deg);
-  box-shadow: 3px 4px 0 #e8eddf6b;
+  box-shadow: 3px 4px 0 color-mix(in srgb, var(--shadow-color) 42%, transparent);
   text-align: center;
-  background-image: radial-gradient(#b8c6a326 0.6px, transparent 0.6px);
-  background-size: 8px 8px;
 }
 .persona-card-label {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  color: #95a581;
+  color: var(--text-3);
   margin-bottom: 24px;
 }
 .persona-card-label > span {
-  font-size: 8px;
+  font-size: 11px;
   letter-spacing: 2px;
 }
 .persona-card > .avatar {
-  outline: 5px solid #fffdf7;
-  box-shadow: 0 0 0 6px #d7e1cc;
+  outline: 5px solid var(--border);
+  box-shadow: 0 0 0 6px var(--border);
   width: 88px;
   height: 88px;
   border-radius: 24px;
@@ -101,7 +98,7 @@
 }
 .persona-card-rule {
   height: 1px;
-  background: #dce5cf;
+  background: var(--primary-soft-2);
   margin: 22px 0;
 }
 .persona-card-details {
@@ -111,8 +108,8 @@
   gap: 17px;
 }
 .persona-card-details h3 {
-  font-size: 10px;
-  color: #8e9f7a;
+  font-size: 11px;
+  color: var(--text-3);
   font-weight: 600;
   margin-bottom: 5px;
   letter-spacing: 2px;
@@ -120,7 +117,7 @@
 .persona-card-details p {
   font-size: 12px;
   line-height: 1.9;
-  color: #6c805d;
+  color: var(--text-2);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   display: -webkit-box;
@@ -129,23 +126,23 @@
   overflow: hidden;
 }
 .persona-card-footer {
-  border-top: 1px dashed #dbe3cf;
+  border-top: 1px solid var(--border);
   margin-top: 22px;
   padding-top: 14px;
   display: flex;
   justify-content: center;
   align-items: center;
   gap: 5px;
-  font-size: 9px;
-  color: #99a78b;
+  font-size: 11px;
+  color: var(--text-3);
 }
 .persona-avatar-action {
   text-align: center;
   margin-top: 23px;
 }
 .persona-avatar-action p {
-  font-size: 10px;
-  color: #99a58d;
+  font-size: 11px;
+  color: var(--text-3);
   margin-top: 12px;
 }
 .avatar-edit-trigger {
@@ -160,7 +157,7 @@
   gap: 14px;
   margin: 7px 0 25px;
   font-size: 13px;
-  color: #7a8e6b;
+  color: var(--text-3);
 }
 .avatar-edit-preview .avatar {
   width: 94px;
@@ -171,7 +168,7 @@
 .avatar-url-form {
   padding-top: 20px;
   margin-top: 20px;
-  border-top: 1px dashed var(--line);
+  border-top: 1px solid var(--line);
   gap: 12px;
 }
 .avatar-url-form > .button {
@@ -240,4 +237,28 @@
   .persona-editor .form-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* Platform design-system alignment */
+.persona-card {
+  padding: 28px 24px 18px;
+  border-radius: 3px;
+  background-color: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+.persona-card-label > span {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.02em;
+}
+.persona-card > .avatar {
+  outline: 0;
+  box-shadow:
+    0 0 0 4px var(--surface),
+    0 0 0 5px var(--border);
+}
+.persona-card h2 {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0;
 }

@@ -100,7 +100,7 @@ export function AvatarEditorButton() {
         open={open}
         onClose={() => !busy && setOpen(false)}
         title="更换头像"
-        description="头像会展示在账户、自设卡片和你的聊天消息中。"
+        description="头像显示在账户、人设和你发送的消息中。"
       >
         <div className="avatar-edit-preview">
           <Avatar name={user.name} src={preview || user.avatar} size="large" />

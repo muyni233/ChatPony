@@ -95,7 +95,7 @@ export function AuthDialog() {
           401,
         );
       closeAuth();
-      notify(authMode === 'register' ? '注册成功，欢迎来到 ChatPony。' : '欢迎回来。');
+      notify(authMode === 'register' ? '注册成功。' : '欢迎回来。');
     } catch (e) {
       setError((e as Error).message);
       if (e instanceof ApiError && /VERIFICATION|DOMAIN|REGISTRATION/.test(e.code)) await refresh();
@@ -107,12 +107,8 @@ export function AuthDialog() {
     <Modal
       open={!!authMode}
       onClose={() => !busy && !sending && closeAuth()}
-      title={authMode === 'register' ? '你的故事，从这里开始' : '欢迎回到 ChatPony'}
-      description={
-        authMode === 'register'
-          ? '创建账户，开启与小马利亚的每一次相遇。'
-          : '登录后，继续上一次未完的对话。'
-      }
+      title={authMode === 'register' ? '注册' : '登录'}
+      description={authMode === 'register' ? '使用邮箱注册账户。' : '使用邮箱和密码登录。'}
     >
       <form ref={formRef} className="form-stack" onSubmit={submit} key={authMode}>
         {authMode === 'register' && (
@@ -120,7 +116,7 @@ export function AuthDialog() {
             <input
               name="name"
               autoComplete="nickname"
-              placeholder="希望大家怎样称呼你？"
+              placeholder="显示在对话中的名字"
               minLength={1}
               maxLength={60}
               required
@@ -198,7 +194,7 @@ export function AuthDialog() {
               name="password"
               type={visible ? 'text' : 'password'}
               autoComplete={authMode === 'register' ? 'new-password' : 'current-password'}
-              placeholder={authMode === 'register' ? '创建一个安全的密码' : '输入你的密码'}
+              placeholder={authMode === 'register' ? '设置密码' : '密码'}
               minLength={authMode === 'register' ? 10 : 1}
               maxLength={128}
               required
@@ -230,7 +226,7 @@ export function AuthDialog() {
           <ArrowRight size={17} />
         </Button>
         <p className="auth-switch">
-          {authMode === 'register' ? '已经有账户？' : '第一次来到这里？'}
+          {authMode === 'register' ? '已经有账户？' : '没有账户？'}
           <button
             type="button"
             disabled={

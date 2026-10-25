@@ -282,7 +282,6 @@ export function MailSettings({
     <div className="admin-mail-page">
       <div className="admin-section-title">
         <div>
-          <span className="admin-eyebrow">MAIL & REGISTRATION</span>
           <h2>邮件与注册验证</h2>
           <p>配置邮件服务，并选择是否验证注册邮箱、限制可注册的邮箱域名。</p>
         </div>
@@ -487,7 +486,6 @@ export function MailSettings({
         </section>
         <aside className="admin-mail-note">
           <span className="admin-paperclip" aria-hidden="true" />
-          <span className="admin-eyebrow">REGISTRATION POLICY</span>
           <h3>按需开启邮箱验证</h3>
           <p>邮箱验证默认关闭，配置好邮件服务后即可按需启用。</p>
           <div>

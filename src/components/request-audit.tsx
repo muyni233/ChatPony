@@ -331,7 +331,6 @@ export function RequestAuditPanel({
     <div className="audit-page">
       <div className="admin-section-title">
         <div>
-          <span className="admin-eyebrow">REQUEST AUDIT</span>
           <h2>请求审查</h2>
           <p>查看模型与向量请求的执行结果、耗时、用量和错误信息。</p>
         </div>
@@ -429,7 +428,7 @@ export function RequestAuditPanel({
               <Search size={16} />
               <input
                 maxLength={200}
-                placeholder="搜索请求记录…"
+                placeholder="搜索请求记录"
                 value={draft.search}
                 onChange={(event) => change('search', event.target.value)}
               />

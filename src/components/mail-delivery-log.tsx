@@ -162,7 +162,6 @@ export function MailDeliveryLog({ refreshKey }: { refreshKey: number }) {
     <section className="admin-mail-deliveries" aria-labelledby="mail-deliveries-title">
       <div className="admin-mail-log-heading">
         <div>
-          <span className="admin-eyebrow">MAIL DELIVERY LOG</span>
           <h3 id="mail-deliveries-title">邮件发送记录</h3>
           <p>用用户提供的参考编号查询失败阶段、服务器响应和处理建议。</p>
         </div>

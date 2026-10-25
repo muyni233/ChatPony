@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  Fragment,
   useCallback,
   useEffect,
   useRef,
@@ -11,23 +12,25 @@ import {
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
+  ArrowDown,
   ArrowLeft,
+  ArrowUp,
   AtSign,
   BookHeart,
   Check,
   Copy,
   Download,
   MessageCircle,
-  Send,
   Settings2,
   ShieldCheck,
   Square,
+  TriangleAlert,
   Users,
   X,
 } from 'lucide-react';
 import { useApp } from './app-provider';
-import { Avatar, Badge, Button, EmptyState, Field, Modal } from './ui';
-import { AuthRequired, Loading } from './library';
+import { Avatar, Badge, Button, EmptyState, Field, IconButton, Kbd, Modal, Skeleton } from './ui';
+import { AuthRequired } from './library';
 import { api, copyText, json, newRequestId } from '@/lib/client';
 import { messageBubbles, visibleMessage } from '@/lib/display';
 import type { ChatEvent, ConversationDetail, Message } from '@/lib/types';
@@ -56,6 +59,9 @@ export function ChatView() {
   const textarea = useRef<HTMLTextAreaElement>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const autoScroll = useRef(true);
+  const [awayFromBottom, setAwayFromBottom] = useState(false);
+  const [unseen, setUnseen] = useState(0);
+  const seenCount = useRef(0);
   const sending = useRef(false);
   const userId = data?.user?.id;
   const load = useCallback(async () => {
@@ -80,15 +86,32 @@ export function ChatView() {
       stream.current?.abort();
     };
   }, [load]);
+  const messageCount = detail?.messages.length || 0;
   useEffect(() => {
-    if (autoScroll.current) bottom.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
-  }, [detail?.messages.length, status]);
+    if (autoScroll.current) {
+      bottom.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
+      seenCount.current = messageCount;
+      setUnseen(0);
+    } else if (messageCount > seenCount.current) {
+      setUnseen(messageCount - seenCount.current);
+    }
+  }, [messageCount, status]);
   useEffect(() => {
     if (textarea.current) {
       textarea.current.style.height = 'auto';
-      textarea.current.style.height = `${Math.min(220, Math.max(77, textarea.current.scrollHeight))}px`;
+      textarea.current.style.height = `${Math.min(240, Math.max(52, textarea.current.scrollHeight))}px`;
     }
   }, [input]);
+  function scrollToLatest() {
+    autoScroll.current = true;
+    setAwayFromBottom(false);
+    setUnseen(0);
+    seenCount.current = messageCount;
+    bottom.current?.scrollIntoView({
+      behavior: document.documentElement.dataset.reduceMotion === 'true' ? 'auto' : 'smooth',
+      block: 'end',
+    });
+  }
   function append(message: Message) {
     setDetail((d) =>
       d
@@ -267,7 +290,7 @@ export function ChatView() {
       setSaving(false);
     }
   }
-  if (loading || pending) return <Loading />;
+  if (loading || pending) return <ChatSkeleton />;
   if (!data?.user)
     return (
       <div style={{ padding: 28 }}>
@@ -276,11 +299,21 @@ export function ChatView() {
     );
   if (loadError || !detail)
     return (
-      <EmptyState
-        title="暂时无法打开这段对话"
-        description={loadError || '对话不存在，或你没有访问权限。'}
-        action={<Button onClick={load}>重新加载</Button>}
-      />
+      <div className="chat-load-error">
+        <EmptyState
+          icon={<TriangleAlert size={22} strokeWidth={1.7} />}
+          title="无法打开对话"
+          description={loadError || '对话不存在，或你没有访问权限。'}
+          action={
+            <>
+              <Link href="/conversations" className="button button-secondary">
+                返回对话列表
+              </Link>
+              <Button onClick={load}>重新加载</Button>
+            </>
+          }
+        />
+      </div>
     );
   const { conversation, characters, messages } = detail;
   const firstCharacter = characters[0];
@@ -296,8 +329,14 @@ export function ChatView() {
   return (
     <div className="chat-workspace">
       <header className="chat-header">
-        <Link className="icon-button" href="/conversations" aria-label="返回对话列表">
-          <ArrowLeft size={19} />
+        <Link
+          className="icon-button chat-back"
+          href="/conversations"
+          aria-label="返回对话列表"
+          data-tooltip="返回对话列表"
+          data-tooltip-side="bottom"
+        >
+          <ArrowLeft size={18} />
         </Link>
         <Avatar
           name={isGroup ? '群' : firstCharacter?.name || '角'}
@@ -307,20 +346,38 @@ export function ChatView() {
         <div className="chat-header-info">
           <h1>{conversation.title}</h1>
           <span>
-            {isGroup ? <Users size={11} /> : <MessageCircle size={11} />}
+            {isGroup ? (
+              <Users size={12} aria-hidden="true" />
+            ) : (
+              <MessageCircle size={12} aria-hidden="true" />
+            )}
             {isGroup
-              ? `${characters.length} 位角色 · @ 角色后触发响应 · 最多 ${conversation.maxRounds} 轮`
-              : `${firstCharacter?.name || '角色'} · 记忆按角色独立保存`}
+              ? `${characters.length} 个角色 · 每条消息最多 ${conversation.maxRounds} 轮回复`
+              : '私聊'}
           </span>
         </div>
         <div className="chat-header-actions">
-          <Button variant="ghost" onClick={exportConversation} aria-label="导出对话">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={exportConversation}
+            aria-label="导出对话"
+            data-tooltip="导出为 Markdown"
+            data-tooltip-side="bottom"
+          >
             <Download size={16} />
-            导出
+            <span className="chat-action-text">导出</span>
           </Button>
-          <Button variant="ghost" onClick={() => setInfo(true)} aria-label="对话设置">
-            <Settings2 size={17} />
-            设置
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setInfo(true)}
+            aria-label="对话设置"
+            data-tooltip="对话设置"
+            data-tooltip-side="bottom"
+          >
+            <Settings2 size={16} />
+            <span className="chat-action-text">设置</span>
           </Button>
         </div>
       </header>
@@ -329,70 +386,95 @@ export function ChatView() {
         ref={scrollArea}
         onScroll={() => {
           const el = scrollArea.current;
-          if (el) autoScroll.current = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+          if (!el) return;
+          const near = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+          autoScroll.current = near;
+          setAwayFromBottom(!near);
+          if (near) {
+            seenCount.current = messageCount;
+            setUnseen(0);
+          }
         }}
-        aria-label="聊天记录"
+        aria-label="消息记录"
         role="log"
         aria-live="polite"
         aria-relevant="additions"
       >
         {messages.length ? (
           <>
-            <div className="chat-date">
-              {new Date(conversation.createdAt).toLocaleDateString('zh-CN', {
-                month: 'long',
-                day: 'numeric',
-              })}{' '}
-              · 故事开始的日子
-            </div>
-            {messages.map((m) => {
+            {messages.map((m, index) => {
               const c = characters.find((c) => c.id === m.characterId);
               const bubbles = messageBubbles(m.content, data.settings, m.role === 'assistant');
               const name = m.role === 'user' ? userDisplayName : c?.name || '系统';
+              const created = new Date(m.createdAt);
+              const previous = messages[index - 1];
+              const previousDate = previous ? new Date(previous.createdAt) : null;
+              const newDay =
+                !previousDate || previousDate.toDateString() !== created.toDateString();
+              // Consecutive messages from the same speaker within five minutes read as one group.
+              const continued =
+                !newDay &&
+                !!previous &&
+                previous.role === m.role &&
+                previous.characterId === m.characterId &&
+                m.role !== 'system' &&
+                created.getTime() - new Date(previous.createdAt).getTime() < 5 * 60_000;
               return (
-                <article className={`message message-${m.role}`} key={m.id}>
-                  {m.role !== 'system' && (
-                    <Avatar
-                      name={name}
-                      src={m.role === 'user' ? data.user?.avatar : c?.avatar}
-                      color={c?.color}
-                    />
+                <Fragment key={m.id}>
+                  {newDay && (
+                    <div className="chat-date" role="separator">
+                      <span>{dayLabel(created)}</span>
+                    </div>
                   )}
-                  <div className="message-content">
-                    <div className="message-author">
-                      <span>{name}</span>
-                      <time>
-                        {new Date(m.createdAt).toLocaleTimeString('zh-CN', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </time>
+                  <article
+                    className={`message message-${m.role} ${continued ? 'message-continued' : ''}`}
+                    aria-label={`${name} ${created.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`}
+                  >
+                    {m.role !== 'system' && (
+                      <Avatar
+                        name={name}
+                        src={m.role === 'user' ? data.user?.avatar : c?.avatar}
+                        color={c?.color}
+                        size="small"
+                      />
+                    )}
+                    <div className="message-content">
+                      <div className="message-author">
+                        <span>{name}</span>
+                        <time dateTime={m.createdAt} title={created.toLocaleString('zh-CN')}>
+                          {created.toLocaleTimeString('zh-CN', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </time>
+                      </div>
+                      <div className="message-bubbles">
+                        {bubbles.length ? (
+                          bubbles.map((text, index) => (
+                            <div className="message-bubble" key={index}>
+                              {text}
+                            </div>
+                          ))
+                        ) : (
+                          <p className="message-hidden">此消息内容已按平台显示规则隐藏。</p>
+                        )}
+                      </div>
+                      <div className="message-tools">
+                        <IconButton
+                          label="复制消息"
+                          size="sm"
+                          tooltipSide="bottom"
+                          disabled={!bubbles.length}
+                          onClick={() =>
+                            copy(visibleMessage(m.content, data.settings, m.role === 'assistant'))
+                          }
+                        >
+                          <Copy size={13} />
+                        </IconButton>
+                      </div>
                     </div>
-                    <div className="message-bubbles">
-                      {bubbles.length ? (
-                        bubbles.map((text, index) => (
-                          <div className="message-bubble" key={index}>
-                            {text}
-                          </div>
-                        ))
-                      ) : (
-                        <p className="message-hidden">此消息内容已按平台显示规则隐藏。</p>
-                      )}
-                    </div>
-                    <div className="message-tools">
-                      <button
-                        className="icon-button"
-                        aria-label="复制消息"
-                        disabled={!bubbles.length}
-                        onClick={() =>
-                          copy(visibleMessage(m.content, data.settings, m.role === 'assistant'))
-                        }
-                      >
-                        <Copy size={12} />
-                      </button>
-                    </div>
-                  </div>
-                </article>
+                  </article>
+                </Fragment>
               );
             })}
           </>
@@ -403,19 +485,17 @@ export function ChatView() {
                 <Avatar key={c.id} name={c.name} src={c.avatar} color={c.color} size="large" />
               ))}
             </div>
-            <h2>
-              {isGroup ? '朋友到齐，故事开始。' : `和${firstCharacter?.name || '新朋友'}，聊聊吧。`}
-            </h2>
+            <h2>{isGroup ? '群聊已创建' : firstCharacter?.name || '新对话'}</h2>
             <p>
               {isGroup
-                ? '在消息中 @角色名称或标识，即可邀请对方回应。\n也可以先写下故事的开场，之后再邀请角色加入。'
+                ? '在消息中 @角色名，指定由谁回复。'
                 : visibleMessage(firstCharacter?.greeting || '', data.settings) ||
-                  '从一句简单的问候开始，\n让日常多一点陪伴，让故事慢慢发生。'}
+                  '发送第一条消息开始对话。'}
             </p>
             <div className="chat-suggestions">
               {(isGroup
-                ? [`@${firstCharacter?.slug || ''} 大家好！`, '今天，我们一起去冒险吧。']
-                : ['你好，很高兴认识你！', '今天有什么有趣的事吗？', '想和你分享一下我的一天。']
+                ? [`@${firstCharacter?.slug || ''} 你好`, '大家好']
+                : ['你好', '介绍一下你自己', '最近在忙什么？']
               ).map((s) => (
                 <button
                   key={s}
@@ -431,21 +511,43 @@ export function ChatView() {
           </div>
         )}
         {busy && (
-          <div className="chat-status">
-            <span className="typing-dots">
-              <i />
-              <i />
-              <i />
+          <div className="chat-status" role="status">
+            {!isGroup && firstCharacter && (
+              <Avatar
+                name={firstCharacter.name}
+                src={firstCharacter.avatar}
+                color={firstCharacter.color}
+                size="small"
+              />
+            )}
+            <span className="chat-status-bubble">
+              <span className="typing-dots" aria-hidden="true">
+                <i />
+                <i />
+                <i />
+              </span>
+              {status || '正在回复…'}
             </span>
-            {status || '正在准备回应…'}
           </div>
         )}
-        <div ref={bottom} />
+        <div ref={bottom} className="chat-bottom-anchor" />
       </div>
+      {awayFromBottom && (
+        <button
+          type="button"
+          className={`scroll-latest ${unseen ? 'scroll-latest-new' : ''}`}
+          onClick={scrollToLatest}
+          aria-label={unseen ? `有 ${unseen} 条新消息，回到底部` : '回到最新消息'}
+        >
+          <ArrowDown size={15} aria-hidden="true" />
+          {unseen ? `${unseen} 条新消息` : '回到底部'}
+        </button>
+      )}
       <div className="chat-composer-area">
         {chatError && (
           <div className="chat-error" role="alert">
             <span>{chatError}</span>
+            <TriangleAlert size={16} aria-hidden="true" />
             {retry && !busy && (
               <button
                 className="text-button"
@@ -495,9 +597,7 @@ export function ChatView() {
             ref={textarea}
             aria-label="消息内容"
             placeholder={
-              isGroup
-                ? '说点什么… 输入 @ 邀请角色回应'
-                : `发送消息给${firstCharacter?.name || '角色'}…`
+              isGroup ? '输入消息，@角色名 指定回复' : `给${firstCharacter?.name || '角色'}发消息`
             }
             value={input}
             onChange={(e) => {
@@ -507,7 +607,7 @@ export function ChatView() {
             onKeyDown={keydown}
             maxLength={20000}
             disabled={busy}
-            rows={2}
+            rows={1}
           />
           <div className="composer-bottom">
             <div className="composer-hints">
@@ -522,11 +622,17 @@ export function ChatView() {
                     textarea.current?.focus();
                   }}
                 >
-                  <AtSign size={18} />
+                  <AtSign size={17} />
                 </button>
               )}
-              <span>Enter 发送 · Shift + Enter 换行</span>
-              {input.length > 15000 && <span>{input.length}/20000</span>}
+              <span className="composer-shortcuts">
+                <Kbd>Enter</Kbd> 发送 · <Kbd>Shift</Kbd> + <Kbd>Enter</Kbd> 换行
+              </span>
+              {input.length > 15000 && (
+                <span className={`composer-count ${input.length > 19500 ? 'over' : ''}`}>
+                  {input.length.toLocaleString()}/20,000
+                </span>
+              )}
             </div>
             {busy ? (
               <Button
@@ -535,27 +641,34 @@ export function ChatView() {
                 type="button"
                 onClick={() => stream.current?.abort()}
               >
-                <Square size={12} />
+                <Square size={11} fill="currentColor" aria-hidden="true" />
                 停止
               </Button>
             ) : (
-              <Button type="submit" className="send-button" disabled={!input.trim()}>
+              <Button
+                type="submit"
+                className="send-button"
+                disabled={!input.trim()}
+                aria-keyshortcuts="Enter"
+              >
                 发送
-                <Send size={15} />
+                <ArrowUp size={15} aria-hidden="true" />
               </Button>
             )}
           </div>
         </form>
         <div className="chat-disclaimer">
+          {data.settings.auditCaptureContent ? (
+            <span>
+              <ShieldCheck size={12} aria-hidden="true" />
+              本平台会记录请求内容用于审查
+            </span>
+          ) : (
+            <span />
+          )}
           <span>
-            <ShieldCheck size={11} />
-            {data.settings.auditCaptureContent
-              ? '平台已启用请求正文审计'
-              : '对话与记忆按账户独立保存'}
-          </span>
-          <span>
-            AI 生成的角色回复属于虚构内容 ·{' '}
-            {data.quota ? `5h 剩余 ${data.quota.fiveHour.remaining} 次` : '按成功调用计次'}
+            角色回复由 AI 生成 ·{' '}
+            {data.quota ? `5h 剩余 ${data.quota.fiveHour.remaining} 次` : '登录后计入额度'}
           </span>
         </div>
       </div>
@@ -563,7 +676,7 @@ export function ChatView() {
         open={info}
         onClose={() => !saving && setInfo(false)}
         title="对话设置"
-        description={isGroup ? '管理群聊名称与角色响应轮数。' : '管理这段对话的名称与记忆。'}
+        description={isGroup ? '群聊名称与回复轮数。' : '对话名称与角色记忆。'}
       >
         <form className="form-stack" onSubmit={saveInfo} key={conversation.updatedAt}>
           <Field label="对话名称">
@@ -571,8 +684,8 @@ export function ChatView() {
           </Field>
           {isGroup && (
             <Field
-              label="每次消息的最大响应轮数"
-              hint="包含最初被 @ 的角色与角色接力，每位角色的响应都单独计次。"
+              label="每条消息的最多回复轮数"
+              hint="包括被 @ 的角色和角色之间的接话，每次回复单独计入额度。"
             >
               <input
                 name="maxRounds"
@@ -612,7 +725,7 @@ export function ChatView() {
           )}
           <Link href="/memories" className="text-button" onClick={() => setInfo(false)}>
             <BookHeart size={16} />
-            管理角色长期记忆
+            管理记忆
           </Link>
           <div className="modal-actions">
             <Button
@@ -630,6 +743,45 @@ export function ChatView() {
           </div>
         </form>
       </Modal>
+    </div>
+  );
+}
+
+function dayLabel(date: Date) {
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  if (date.toDateString() === today.toDateString()) return '今天';
+  if (date.toDateString() === yesterday.toDateString()) return '昨天';
+  return date.toLocaleDateString('zh-CN', {
+    ...(date.getFullYear() === today.getFullYear() ? {} : { year: 'numeric' }),
+    month: 'long',
+    day: 'numeric',
+  });
+}
+
+function ChatSkeleton() {
+  return (
+    <div className="chat-workspace chat-skeleton" role="status" aria-live="polite">
+      <span className="visually-hidden">正在加载对话…</span>
+      <div className="chat-header" aria-hidden="true">
+        <Skeleton width={32} height={32} radius={8} />
+        <Skeleton width={36} height={36} radius={10} />
+        <span className="chat-header-info">
+          <Skeleton width={160} height={14} />
+          <Skeleton width={220} height={10} />
+        </span>
+      </div>
+      <div className="chat-messages" aria-hidden="true">
+        {[0, 1, 2].map((i) => (
+          <div className={`skeleton-message ${i === 1 ? 'skeleton-message-user' : ''}`} key={i}>
+            <Skeleton width={32} height={32} radius={10} />
+            <div className="skeleton-message-body">
+              <Skeleton width={i === 1 ? 180 : 320} height={44} radius={14} />
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

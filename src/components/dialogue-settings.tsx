@@ -222,7 +222,6 @@ export function DialogueSettings({
     <div className="admin-dialogue-page">
       <div className="admin-section-title">
         <div>
-          <span className="admin-eyebrow">CONVERSATION POLICIES</span>
           <h2>对话策略</h2>
           <p>分别管理上下文整理、长期记忆提炼与元数据注入。</p>
         </div>
@@ -450,7 +449,7 @@ export function DialogueSettings({
                   <textarea
                     rows={5}
                     maxLength={2000}
-                    placeholder="输入需要统一提供给角色的补充信息…"
+                    placeholder="输入需要统一提供给角色的补充信息"
                     value={metadata.metadataCustom}
                     onChange={(event) =>
                       setMetadata((previous) => ({

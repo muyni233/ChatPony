@@ -21,7 +21,8 @@ import {
   Plus,
   RefreshCw,
   Search,
-  Sparkles,
+  Cpu,
+  UserRound,
   Trash2,
   X,
 } from 'lucide-react';
@@ -124,9 +125,7 @@ export function UserCharactersPage() {
   return (
     <div className="page-enter private-characters-page">
       <PageHeading
-        eyebrow="YOUR PRIVATE CHARACTERS"
         title="我的角色"
-        description="编写人设，选择模型，创建只属于你的对话角色。"
         action={
           user ? (
             <Button onClick={() => setEditor({})} disabled={!canCreate || fetching}>
@@ -139,10 +138,7 @@ export function UserCharactersPage() {
       {loading ? (
         <Loading />
       ) : !user ? (
-        <AuthRequired
-          title="创建只属于你的角色"
-          description="登录后可以创建与管理自己的私有角色，用于私聊和群聊。"
-        />
+        <AuthRequired title="请先登录" description="登录后可创建私有角色。" />
       ) : (
         <>
           {error && (
@@ -216,12 +212,12 @@ export function UserCharactersPage() {
                     <Search size={17} />
                     <input
                       aria-label="搜索我的角色"
-                      placeholder="搜索名称、简介或标签…"
+                      placeholder="搜索名称、简介或标签"
                       value={query}
                       onChange={(event) => setQuery(event.target.value)}
                     />
                   </div>
-                  <Badge>{collection.items.length} 位角色</Badge>
+                  <Badge>{collection.items.length} 个角色</Badge>
                 </div>
                 {items.length ? (
                   <div className="private-character-grid">
@@ -255,7 +251,7 @@ export function UserCharactersPage() {
                             仅自己可见
                           </span>
                           <p className="private-character-description">
-                            {character.description || '还没有填写简介，编辑角色时可以补充。'}
+                            {character.description || '暂无简介'}
                           </p>
                           {!!character.tags.length && (
                             <div className="character-tags">
@@ -268,7 +264,7 @@ export function UserCharactersPage() {
                             </div>
                           )}
                           <p className="private-character-model">
-                            <Sparkles size={13} />
+                            <Cpu size={13} />
                             <span>
                               {model?.name ||
                                 (character.providerId
@@ -309,13 +305,13 @@ export function UserCharactersPage() {
                 ) : (
                   <div className="paper-card">
                     <EmptyState
-                      icon={<Sparkles size={27} />}
-                      title={query ? '没有找到匹配的角色' : '从一个名字，开始新的故事'}
+                      icon={<UserRound size={27} />}
+                      title={query ? '没有找到匹配的角色' : '暂无角色'}
                       description={
                         query
                           ? '试试其他名称或标签，或清除搜索条件。'
                           : canCreate
-                            ? '写下角色的性格与背景。你创建的角色只有自己可以查看和使用。'
+                            ? '创建的角色仅自己可见。'
                             : '当前没有可用的角色槽位。你可以联系管理员调整，或先去角色广场认识平台角色。'
                       }
                       action={
@@ -326,7 +322,7 @@ export function UserCharactersPage() {
                         ) : canCreate ? (
                           <Button onClick={() => setEditor({})}>
                             <Plus size={16} />
-                            创建第一个角色
+                            创建角色
                           </Button>
                         ) : (
                           <Link className="button button-secondary" href="/characters">
@@ -341,8 +337,7 @@ export function UserCharactersPage() {
                 <p className="private-character-footnote">
                   <CircleHelp size={14} />
                   <span>
-                    想设置你在故事中的身份？前往 <Link href="/persona">我的自设</Link> 编辑你的 RP
-                    身份卡。
+                    你在对话中的身份可在 <Link href="/persona">人设</Link> 中设置。
                   </span>
                 </p>
               </>
@@ -565,7 +560,7 @@ function PrivateCharacterEditor({
               maxLength={60}
               value={draft.name}
               onChange={(event) => field('name', event.target.value)}
-              placeholder="给这位朋友起一个名字"
+              placeholder="角色名称"
             />
           </Field>
           <Field label="角色简介" hint="用于你的角色列表，最多 500 字。">
@@ -574,7 +569,7 @@ function PrivateCharacterEditor({
               maxLength={500}
               value={draft.description}
               onChange={(event) => field('description', event.target.value)}
-              placeholder="简单介绍角色的身份、性格或故事背景…"
+              placeholder="一句话介绍角色"
             />
           </Field>
           <Field
@@ -596,7 +591,7 @@ function PrivateCharacterEditor({
               maxLength={4000}
               value={draft.greeting}
               onChange={(event) => field('greeting', event.target.value)}
-              placeholder="写下角色想对你说的第一句话…"
+              placeholder="新私聊中角色发送的第一条消息"
             />
           </Field>
           <div className="private-character-form-grid">

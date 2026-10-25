@@ -168,7 +168,7 @@ export function getDb(): Database {
     INSERT OR IGNORE INTO settings(key,value) VALUES
       ('registrationOpen','true'), ('defaultLimit5h','50'), ('defaultLimit7d','500'),
       ('defaultCharacterSlots','3'),
-      ('maxGroupRounds','6'), ('siteDescription','"与熟悉的角色，开启新的故事。"'),
+      ('maxGroupRounds','6'), ('siteDescription','"MLP 主题的 AI 角色对话平台。"'),
       ('bubbleDelimiter','""'), ('hiddenSymbols','[]'),
       ('requireEmailVerification','false'), ('emailDomainMode','"any"'), ('emailDomains','[]'),
       ('auditCaptureContent','false'), ('auditRetentionDays','7'),

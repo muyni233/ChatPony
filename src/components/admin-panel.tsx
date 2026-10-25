@@ -38,7 +38,7 @@ import {
   Search,
   Settings2,
   ShieldCheck,
-  Sparkles,
+  Drama,
   Trash2,
   Users,
   X,
@@ -131,7 +131,7 @@ const effortNames: Record<ReasoningEffort, string> = {
 };
 const tabs: { id: Tab; label: string; icon: ReactNode }[] = [
   { id: 'overview', label: '平台概览', icon: <LayoutDashboard size={16} /> },
-  { id: 'characters', label: '角色管理', icon: <Sparkles size={16} /> },
+  { id: 'characters', label: '角色管理', icon: <Drama size={16} /> },
   { id: 'providers', label: '供应商与模型', icon: <Cpu size={16} /> },
   { id: 'dialogue', label: '对话策略', icon: <MessageSquareText size={16} /> },
   { id: 'announcements', label: '公告管理', icon: <Megaphone size={16} /> },
@@ -235,12 +235,12 @@ function FormFooter({
   );
 }
 function SectionTitle({
-  eyebrow,
   title,
   description,
   action,
 }: {
-  eyebrow: string;
+  /** Retained for call-site compatibility; section headers no longer show eyebrows. */
+  eyebrow?: string;
   title: string;
   description: string;
   action?: ReactNode;
@@ -248,7 +248,6 @@ function SectionTitle({
   return (
     <div className="admin-section-title">
       <div>
-        <span className="admin-eyebrow">{eyebrow}</span>
         <h2>{title}</h2>
         <p>{description}</p>
       </div>
@@ -391,7 +390,7 @@ export function AdminPanel() {
     return (
       <div className="admin-loading" role="status">
         <RefreshCw className="admin-spin" size={24} />
-        <p>正在加载管理控制台…</p>
+        <p>正在加载管理后台…</p>
       </div>
     );
   if (!authorized)
@@ -409,22 +408,11 @@ export function AdminPanel() {
     <div className="admin-page">
       <header className="admin-page-header">
         <div>
-          <span className="admin-eyebrow">
-            <span className="admin-status-dot" /> CHATPONY ADMIN
-          </span>
-          <h1>
-            管理控制台<span className="admin-title-dot">.</span>
-          </h1>
-          <p>统一管理角色、模型、用户与平台配置。</p>
-        </div>
-        <div className="admin-admin-mark">
-          <ShieldCheck size={19} />
-          <span>
-            管理员控制台<small>仅管理员可见</small>
-          </span>
+          <h1>管理后台</h1>
+          <p>角色、模型、用户与平台配置。</p>
         </div>
       </header>
-      <nav className="admin-tabs" aria-label="管理控制台导航">
+      <nav className="admin-tabs" aria-label="管理后台导航">
         {tabs.map((item) => (
           <button
             key={item.id}
@@ -464,7 +452,7 @@ export function AdminPanel() {
           {tab === 'overview' && (
             <>
               <div className="admin-overview-heading">
-                <span className="admin-eyebrow">THE BIG PICTURE</span>
+                <h2 className="admin-overview-title">数据概览</h2>
                 <Button variant="ghost" onClick={() => void load()} loading={loading}>
                   <RefreshCw size={15} />
                   刷新数据
@@ -483,7 +471,7 @@ export function AdminPanel() {
                     label: '平台角色',
                     value: data.overview.characters,
                     caption: `${data.characters.filter((item) => item.active && data.providers.some((provider) => provider.id === item.providerId && languageModelAvailable(provider))).length} 个角色已上架`,
-                    icon: <Sparkles size={20} />,
+                    icon: <Drama size={20} />,
                     tone: 'pink',
                   },
                   {
@@ -509,7 +497,6 @@ export function AdminPanel() {
                     <strong>{amount(stat.value)}</strong>
                     <div className="admin-stat-bottom">
                       <small>{stat.caption}</small>
-                      <span>0{index + 1}</span>
                     </div>
                   </article>
                 ))}
@@ -518,13 +505,8 @@ export function AdminPanel() {
                 <section className="admin-paper admin-setup">
                   <div className="admin-card-heading">
                     <div>
-                      <span className="admin-eyebrow">READY, SET, CONNECT</span>
                       <h3>平台配置清单</h3>
                     </div>
-                    <span className="admin-stamp">
-                      <Check size={13} />
-                      WORKSPACE
-                    </span>
                   </div>
                   <p className="admin-section-note">完成基础配置后，用户即可开始与角色对话。</p>
                   {[
@@ -536,7 +518,7 @@ export function AdminPanel() {
                       icon: <Cpu size={20} />,
                     },
                     {
-                      title: '创建你的第一个角色',
+                      title: '创建角色',
                       description: '设定人设，关联模型，再发布角色',
                       complete: data.characters.some(
                         (item) =>
@@ -547,11 +529,11 @@ export function AdminPanel() {
                           ),
                       ),
                       tab: 'characters' as Tab,
-                      icon: <Sparkles size={20} />,
+                      icon: <Drama size={20} />,
                     },
                     {
-                      title: '发布社区公告',
-                      description: '让用户了解平台动态与使用说明',
+                      title: '发布公告',
+                      description: '公告显示在首页和公告页',
                       complete: data.announcements.some((item) => item.published),
                       tab: 'announcements' as Tab,
                       icon: <Megaphone size={20} />,
@@ -577,14 +559,8 @@ export function AdminPanel() {
                   ))}
                 </section>
                 <section className="admin-policy">
-                  <div className="admin-paperclip" aria-hidden="true" />
-                  <span className="admin-eyebrow">PLATFORM RULES</span>
                   <h3>调用与响应规则</h3>
-                  <p>
-                    查看全体用户的统一调用限额，
-                    <br />
-                    以及群聊的响应轮数上限。
-                  </p>
+                  <p>全体用户的默认调用限额与群聊回复轮数上限。</p>
                   <dl>
                     <div>
                       <dt>全局 · 5 小时限额</dt>
@@ -666,9 +642,8 @@ export function AdminPanel() {
           {tab === 'characters' && (
             <>
               <SectionTitle
-                eyebrow="CHARACTER LIBRARY"
                 title="角色管理"
-                description="统一管理角色的人设、开场白与模型。上架后，用户即可开启对话。"
+                description="角色的人设、开场白与模型。上架后用户可以开始对话。"
                 action={
                   <Button onClick={() => setEditor({ type: 'character' })}>
                     <Plus size={17} />
@@ -679,7 +654,7 @@ export function AdminPanel() {
               {!data.characters.length ? (
                 <div className="admin-empty-paper">
                   <EmptyState
-                    icon={<Sparkles size={28} />}
+                    icon={<Drama size={28} />}
                     title="尚未创建角色"
                     description="平台不会预置角色。先连接模型，再为你的社区创建第一个角色。"
                     action={
@@ -783,7 +758,6 @@ export function AdminPanel() {
           {tab === 'providers' && (
             <>
               <SectionTitle
-                eyebrow="SUPPLIERS & MODELS"
                 title="供应商与模型"
                 description="供应商统一维护 API 协议、服务地址与密钥，每个供应商下可配置多个模型。"
                 action={
@@ -1030,7 +1004,6 @@ export function AdminPanel() {
           {tab === 'announcements' && (
             <>
               <SectionTitle
-                eyebrow="COMMUNITY NOTICEBOARD"
                 title="公告管理"
                 description="发布平台动态、使用说明或维护通知。重要公告可以置顶展示。"
                 action={
@@ -1045,7 +1018,7 @@ export function AdminPanel() {
                   <EmptyState
                     icon={<Megaphone size={28} />}
                     title="尚未发布公告"
-                    description="写一则欢迎公告，或向大家介绍平台的使用方式。"
+                    description="发布后会显示在首页和公告页。"
                     action={
                       <Button onClick={() => setEditor({ type: 'announcement' })}>
                         <Pencil size={16} />
@@ -1112,7 +1085,6 @@ export function AdminPanel() {
           {tab === 'users' && (
             <>
               <SectionTitle
-                eyebrow="PEOPLE & PERMISSIONS"
                 title="用户与调用限额"
                 description="管理账户权限、调用限额与私有角色槽位。5 小时、7 天两种滚动限额会同时生效。"
                 action={
@@ -1126,7 +1098,7 @@ export function AdminPanel() {
                 <label className="admin-search">
                   <Search size={17} />
                   <input
-                    placeholder="搜索用户名或邮箱…"
+                    placeholder="搜索用户名或邮箱"
                     aria-label="搜索用户"
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
@@ -1597,7 +1569,7 @@ function CharacterEditor({
           required
           maxLength={20000}
           rows={7}
-          placeholder="描述这个角色是谁，以及应当如何与用户交流…"
+          placeholder="描述这个角色是谁，以及应当如何与用户交流"
           value={draft.personality}
           onChange={(event) => field('personality', event.target.value)}
         />
@@ -1606,7 +1578,7 @@ function CharacterEditor({
         <textarea
           rows={3}
           maxLength={4000}
-          placeholder="写下角色的第一句话…"
+          placeholder="新对话中角色发送的第一条消息"
           value={draft.greeting}
           onChange={(event) => field('greeting', event.target.value)}
         />
@@ -2241,7 +2213,6 @@ function EmbeddingEditor({
           <Database size={23} strokeWidth={1.6} />
         </span>
         <div>
-          <span className="admin-eyebrow">SEMANTIC MEMORY</span>
           <h3 id="embedding-title">向量记忆</h3>
           <p>从模型库选择向量模型，为长期记忆建立索引并检索相关内容。</p>
         </div>
@@ -2545,7 +2516,7 @@ function AnnouncementEditor({
           required
           maxLength={20000}
           rows={10}
-          placeholder="输入公告正文…"
+          placeholder="输入公告正文"
           value={draft.content}
           onChange={(event) =>
             setDraft((previous) => ({ ...previous, content: event.target.value }))
@@ -2741,7 +2712,6 @@ function SettingsEditor({
   return (
     <>
       <SectionTitle
-        eyebrow="MAKE IT YOURS"
         title="平台设置"
         description="管理注册入口、调用限额、角色槽位、消息展示与请求记录。"
       />
@@ -2751,7 +2721,7 @@ function SettingsEditor({
           <div className="admin-settings-description">
             <span className="admin-settings-index">01</span>
             <h3>平台与访问</h3>
-            <p>让新用户了解你的社区，并决定是否开放注册。</p>
+            <p>站点名称、简介与注册设置。</p>
           </div>
           <div className="admin-settings-fields">
             <Field label="平台简介" hint="展示在平台入口，最多 300 字。">
@@ -2759,7 +2729,7 @@ function SettingsEditor({
                 rows={3}
                 maxLength={300}
                 value={draft.siteDescription}
-                placeholder="输入平台简介…"
+                placeholder="输入平台简介"
                 onChange={(event) =>
                   setDraft((previous) => ({ ...previous, siteDescription: event.target.value }))
                 }

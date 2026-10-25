@@ -22,7 +22,11 @@ type AppContextType = {
   openAuth: (mode?: 'login' | 'register') => void;
   authMode: 'login' | 'register' | null;
   closeAuth: () => void;
+  theme: ThemePreference;
+  setTheme: (theme: ThemePreference) => void;
 };
+export type ThemePreference = 'system' | 'light' | 'dark';
+const THEME_KEY = 'chatpony-theme';
 const AppContext = createContext<AppContextType | null>(null);
 export function AppProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<Bootstrap | null>(null);
@@ -30,6 +34,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [authMode, setAuthMode] = useState<'login' | 'register' | null>(null);
   const [toast, setToast] = useState<{ message: string; kind: string; id: number } | null>(null);
+  const [theme, setThemeState] = useState<ThemePreference>('system');
   const refreshSequence = useRef(0);
   const lastRefresh = useRef(0);
   const refresh = useCallback(async () => {
@@ -68,6 +73,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     document.documentElement.dataset.reduceMotion = String(
       localStorage.getItem('chatpony-reduced-motion') === 'true',
     );
+    const saved = localStorage.getItem(THEME_KEY);
+    if (saved === 'light' || saved === 'dark') setThemeState(saved);
+  }, []);
+  const setTheme = useCallback((next: ThemePreference) => {
+    setThemeState(next);
+    const root = document.documentElement;
+    // Briefly disable transitions so every surface switches palette in the same frame.
+    root.dataset.themeSwitching = 'true';
+    if (next === 'system') {
+      root.removeAttribute('data-theme');
+      localStorage.removeItem(THEME_KEY);
+    } else {
+      root.dataset.theme = next;
+      localStorage.setItem(THEME_KEY, next);
+    }
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        delete root.dataset.themeSwitching;
+      }),
+    );
   }, []);
   useEffect(() => {
     if (toast) {
@@ -91,6 +116,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         openAuth: (mode = 'login') => setAuthMode(mode),
         authMode,
         closeAuth: () => setAuthMode(null),
+        theme,
+        setTheme,
       }}
     >
       {children}
@@ -98,11 +125,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
         className={`toast ${toast ? 'toast-visible' : ''} ${toast?.kind === 'error' ? 'toast-error' : ''}`}
         role="status"
         aria-live="polite"
+        aria-atomic="true"
       >
-        {toast?.kind === 'error' ? <AlertCircle size={19} /> : <Check size={19} />}
+        <span className="toast-icon" aria-hidden="true">
+          {toast?.kind === 'error' ? <AlertCircle size={16} /> : <Check size={16} />}
+        </span>
         <span>{toast?.message}</span>
-        <button aria-label="关闭通知" className="icon-button" onClick={() => setToast(null)}>
-          <X size={16} />
+        <button
+          aria-label="关闭通知"
+          className="icon-button icon-button-sm"
+          onClick={() => setToast(null)}
+          tabIndex={toast ? 0 : -1}
+        >
+          <X size={15} />
         </button>
       </div>
     </AppContext.Provider>
