@@ -119,10 +119,11 @@ async function handleSubmit() {
     <v-card class="pa-6" color="surface">
       <div class="d-flex align-start justify-space-between mb-4">
         <div>
-          <h3 class="text-h5 font-weight-bold">
+          <img src="/icon.svg" alt="ChatPony" width="40" height="40" class="mb-4" style="display:block;border-radius:10px" />
+          <h3 class="text-headline-small font-weight-bold">
             {{ mode === 'login' ? '登录 ChatPony' : '创建新账号' }}
           </h3>
-          <div class="text-body-2 text-medium-emphasis mt-1">
+          <div class="text-body-medium text-medium-emphasis mt-1">
             {{ mode === 'login' ? '输入邮箱与密码进入对话空间' : '注册账号以保存对话记录与角色记忆' }}
           </div>
         </div>

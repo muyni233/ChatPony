@@ -210,9 +210,12 @@ async function delAnn(id: string) {
 </script>
 
 <template>
-  <v-container fluid class="pa-5 pa-md-8" style="max-width:1240px">
-    <div class="mb-5">
-      <h1 class="text-h5 text-sm-h4 font-weight-bold">管理后台</h1>
+  <div class="cp-page" style="max-width:1240px">
+    <div class="cp-page-header">
+      <div>
+        <h1 class="cp-page-title">管理后台</h1>
+        <p class="cp-page-subtitle">用户、角色、模型供应商、邮件与审计的统一管理。</p>
+      </div>
     </div>
 
     <EmptyState
@@ -235,26 +238,26 @@ async function delAnn(id: string) {
       <v-row v-if="activeTab === 'overview' && overview" density="compact">
         <v-col cols="6" md="3">
           <v-card border class="pa-5">
-            <div class="text-caption text-medium-emphasis">注册用户</div>
-            <div class="text-h4 font-weight-bold mt-2 text-primary">{{ overview.users }}</div>
+            <div class="text-body-small text-medium-emphasis">注册用户</div>
+            <div class="text-headline-medium font-weight-bold mt-2 text-primary">{{ overview.users }}</div>
           </v-card>
         </v-col>
         <v-col cols="6" md="3">
           <v-card border class="pa-5">
-            <div class="text-caption text-medium-emphasis">官方角色</div>
-            <div class="text-h4 font-weight-bold mt-2 text-secondary">{{ overview.characters }}</div>
+            <div class="text-body-small text-medium-emphasis">官方角色</div>
+            <div class="text-headline-medium font-weight-bold mt-2 text-secondary">{{ overview.characters }}</div>
           </v-card>
         </v-col>
         <v-col cols="6" md="3">
           <v-card border class="pa-5">
-            <div class="text-caption text-medium-emphasis">累计会话</div>
-            <div class="text-h4 font-weight-bold mt-2 text-tertiary">{{ overview.conversations }}</div>
+            <div class="text-body-small text-medium-emphasis">累计会话</div>
+            <div class="text-headline-medium font-weight-bold mt-2 text-tertiary">{{ overview.conversations }}</div>
           </v-card>
         </v-col>
         <v-col cols="6" md="3">
           <v-card border class="pa-5">
-            <div class="text-caption text-medium-emphasis">模型调用次数</div>
-            <div class="text-h4 font-weight-bold mt-2">{{ overview.calls }}</div>
+            <div class="text-body-small text-medium-emphasis">模型调用次数</div>
+            <div class="text-headline-medium font-weight-bold mt-2">{{ overview.calls }}</div>
           </v-card>
         </v-col>
       </v-row>
@@ -286,7 +289,7 @@ async function delAnn(id: string) {
       <v-card v-else-if="activeTab === 'settings' && settingsForm" border class="pa-5">
         <v-form class="d-flex flex-column ga-5" @submit.prevent="savePlatformSettings">
           <div>
-            <h3 class="text-subtitle-1 font-weight-bold mb-3">额度、群聊与站点展示</h3>
+            <h3 class="text-title-medium font-weight-bold mb-3">额度、群聊与站点展示</h3>
             <v-row density="compact">
               <v-col cols="12" sm="6" md="3">
                 <v-text-field v-model.number="settingsForm.defaultLimit5h" label="默认 5 小时额度" type="number" min="0" />
@@ -312,7 +315,7 @@ async function delAnn(id: string) {
           <v-divider />
 
           <div>
-            <h3 class="text-subtitle-1 font-weight-bold mb-3">消息分段与动作样式</h3>
+            <h3 class="text-title-medium font-weight-bold mb-3">消息分段与动作样式</h3>
             <v-row density="compact">
               <v-col cols="12" md="4">
                 <v-text-field v-model="settingsForm.bubbleDelimiter" label="气泡分割符 (如 |||)" placeholder="留空表示不分割" />
@@ -329,7 +332,7 @@ async function delAnn(id: string) {
           <v-divider />
 
           <div>
-            <h3 class="text-subtitle-1 font-weight-bold mb-3">上下文压缩、记忆权重与环境注入</h3>
+            <h3 class="text-title-medium font-weight-bold mb-3">上下文压缩、记忆权重与环境注入</h3>
             <v-row density="compact">
               <v-col cols="12" sm="6" md="3">
                 <v-text-field v-model.number="settingsForm.compressionTriggerRounds" label="摘要压缩触发轮数" type="number" min="6" />
@@ -373,7 +376,7 @@ async function delAnn(id: string) {
           <v-divider />
 
           <div>
-            <h3 class="text-subtitle-1 font-weight-bold mb-3">能力开关</h3>
+            <h3 class="text-title-medium font-weight-bold mb-3">能力开关</h3>
             <v-row density="compact">
               <v-col cols="12" sm="6" lg="4">
                 <v-sheet color="surface-light" rounded="lg" class="pa-3 px-4">
@@ -428,12 +431,12 @@ async function delAnn(id: string) {
 
       <!-- 6. Embedding & Memory params -->
       <v-card v-else-if="activeTab === 'embedding'" border class="pa-5">
-        <h3 class="text-subtitle-1 font-weight-bold mb-4">向量嵌入（Embedding）与语义召回设置</h3>
+        <h3 class="text-title-medium font-weight-bold mb-4">向量嵌入（Embedding）与语义召回设置</h3>
         <v-form class="d-flex flex-column ga-4" @submit.prevent="saveEmbedding">
           <v-sheet color="surface-light" rounded="lg" class="pa-3 px-4 d-flex align-center justify-space-between ga-3">
             <div>
-              <div class="text-body-1 font-weight-medium">启用混合语义向量检索</div>
-              <div class="text-caption text-medium-emphasis">与 SQLite FTS5 trigram 协同工作，按模型指纹自动更新向量</div>
+              <div class="text-body-large font-weight-medium">启用混合语义向量检索</div>
+              <div class="text-body-small text-medium-emphasis">与 SQLite FTS5 trigram 协同工作，按模型指纹自动更新向量</div>
             </div>
             <v-switch v-model="embForm.enabled" hide-details />
           </v-sheet>
@@ -469,7 +472,7 @@ async function delAnn(id: string) {
       <!-- 7. Announcements -->
       <v-card v-else-if="activeTab === 'announcements'" border class="pa-5">
         <div class="d-flex align-center justify-space-between ga-3 flex-wrap mb-4">
-          <h3 class="text-subtitle-1 font-weight-bold">站内公告管理（{{ adminAnnouncements.length }}）</h3>
+          <h3 class="text-title-medium font-weight-bold">站内公告管理（{{ adminAnnouncements.length }}）</h3>
           <v-btn color="primary" size="small" prepend-icon="mdi-plus" @click="openCreateAnn">发布新公告</v-btn>
         </div>
 
@@ -483,13 +486,13 @@ async function delAnn(id: string) {
           >
             <div class="flex-1-1" style="min-width:220px">
               <div class="d-flex align-center ga-2 flex-wrap">
-                <strong class="text-body-1">{{ a.title }}</strong>
+                <strong class="text-body-large">{{ a.title }}</strong>
                 <v-chip v-if="a.pinned" size="x-small" color="tertiary" variant="tonal">置顶</v-chip>
                 <v-chip size="x-small" :color="a.published ? 'success' : 'default'" variant="tonal">
                   {{ a.published ? '已发布' : '草稿' }}
                 </v-chip>
               </div>
-              <div class="text-body-2 text-medium-emphasis mt-1">{{ a.content }}</div>
+              <div class="text-body-medium text-medium-emphasis mt-1">{{ a.content }}</div>
             </div>
             <div class="d-flex ga-2">
               <v-btn size="small" variant="outlined" icon="mdi-pencil-outline" aria-label="编辑公告" @click="openEditAnn(a)" />
@@ -497,7 +500,7 @@ async function delAnn(id: string) {
             </div>
           </v-sheet>
         </div>
-        <div v-else class="text-body-2 text-medium-emphasis">暂无站内公告。</div>
+        <div v-else class="text-body-medium text-medium-emphasis">暂无站内公告。</div>
 
         <v-dialog v-model="annOpen" max-width="580">
           <v-card class="pa-2">
@@ -530,5 +533,5 @@ async function delAnn(id: string) {
       <!-- 9. Request Audit -->
       <AdminAuditTab v-else-if="activeTab === 'audit'" />
     </template>
-  </v-container>
+  </div>
 </template>

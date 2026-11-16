@@ -2,7 +2,6 @@
 import { onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import AvatarEditorButton from '../components/AvatarEditorButton.vue';
-import AvatarBadge from '../components/m3/AvatarBadge.vue';
 import EmptyState from '../components/m3/EmptyState.vue';
 import { api, ApiError } from '../lib/api';
 import type { Character, UserCharacters } from '../lib/types';
@@ -162,20 +161,21 @@ async function startChat(charId: string) {
 </script>
 
 <template>
-  <v-container fluid class="pa-5 pa-md-8" style="max-width:1180px">
-    <div class="d-flex align-end justify-space-between flex-wrap ga-4 mb-5">
+  <div class="cp-page" style="max-width:1180px">
+    <header class="cp-page-header">
       <div>
-        <h1 class="text-h5 text-sm-h4 font-weight-bold">自设角色</h1>
+        <h1 class="cp-page-title">自设角色</h1>
+        <p class="cp-page-subtitle">创建只属于你的角色，定义性格、开场白与使用的模型。</p>
       </div>
       <div v-if="data" class="d-flex align-center ga-3">
-        <v-chip color="secondary" variant="tonal">
+        <v-chip variant="outlined" class="cp-chip-quiet">
           槽位已用 {{ data.slots.used }} / {{ data.slots.limit }}
         </v-chip>
         <v-btn color="primary" prepend-icon="mdi-plus" :disabled="data.slots.remaining <= 0" @click="openCreate">
           新建自设角色
         </v-btn>
       </div>
-    </div>
+    </header>
 
     <EmptyState v-if="!store.user" icon="mdi-book-heart-outline" title="登录后创建你的私有 OC" description="私有自设角色与头像完全隔离，仅对你自己可见。">
       <template #action>
@@ -185,37 +185,40 @@ async function startChat(charId: string) {
 
     <v-row v-else-if="data?.items.length">
       <v-col v-for="ch in data.items" :key="ch.id" cols="12" md="6" lg="4">
-        <v-card color="surface" class="pa-4 fill-height d-flex flex-column ga-3">
+        <v-card color="surface" class="pa-5 fill-height d-flex flex-column ga-3">
           <div class="d-flex align-center ga-3">
-            <AvatarBadge :name="ch.name" :avatar="ch.avatar" :color="ch.color" :size="48" rounded="lg" />
+            <AvatarEditorButton
+              compact
+              :size="48"
+              :name="ch.name"
+              :avatar="ch.avatar"
+              :color="ch.color"
+              :busy="avatarBusy"
+              @upload="(f) => onUploadAvatar(ch.id, f)"
+              @clear="onClearAvatar(ch.id)"
+            />
             <div style="min-width:0;flex:1">
               <div class="d-flex align-center ga-2">
-                <span class="text-subtitle-1 font-weight-bold text-truncate">{{ ch.name }}</span>
+                <span class="text-title-medium font-weight-bold text-truncate">{{ ch.name }}</span>
                 <v-chip size="x-small" :color="ch.active ? 'success' : 'default'" variant="tonal">
                   {{ ch.active ? '启用中' : '已停用' }}
                 </v-chip>
               </div>
-              <div class="text-caption text-medium-emphasis">@{{ ch.slug }}</div>
+              <div class="text-body-small text-medium-emphasis">@{{ ch.slug }}</div>
             </div>
           </div>
 
-          <AvatarEditorButton
-            :name="ch.name"
-            :avatar="ch.avatar"
-            :color="ch.color"
-            :busy="avatarBusy"
-            @upload="(f) => onUploadAvatar(ch.id, f)"
-            @clear="onClearAvatar(ch.id)"
-          />
-
-          <p class="text-body-2 text-medium-emphasis flex-grow-1 mb-0">{{ ch.description || '暂无简介' }}</p>
+          <p class="text-body-medium text-medium-emphasis flex-grow-1 mb-0 cp-clamp-3">{{ ch.description || '暂无简介' }}</p>
 
           <div class="d-flex ga-2 mt-auto">
-            <v-btn color="primary" size="small" class="flex-grow-1" prepend-icon="mdi-chat-plus-outline" :disabled="!ch.active" @click="startChat(ch.id)">
+            <v-btn color="primary" variant="flat" height="36" class="flex-grow-1" prepend-icon="mdi-chat-plus-outline" :disabled="!ch.active" @click="startChat(ch.id)">
               开始对话
             </v-btn>
-            <v-btn variant="tonal" size="small" prepend-icon="mdi-pencil-outline" @click="openEdit(ch)">编辑</v-btn>
-            <v-btn color="error" variant="tonal" size="small" icon="mdi-delete-outline" @click="handleDelete(ch.id)" />
+            <v-btn variant="tonal" height="36" prepend-icon="mdi-pencil-outline" @click="openEdit(ch)">编辑</v-btn>
+            <v-btn variant="text" height="36" width="36" min-width="36" color="error" aria-label="删除角色" @click="handleDelete(ch.id)">
+              <v-icon icon="mdi-delete-outline" size="18" />
+              <v-tooltip activator="parent">删除</v-tooltip>
+            </v-btn>
           </div>
         </v-card>
       </v-col>
@@ -235,7 +238,7 @@ async function startChat(charId: string) {
     <v-dialog v-model="modalOpen" max-width="720">
       <v-card color="surface" class="pa-6">
         <div class="d-flex align-center justify-space-between mb-4">
-          <h3 class="text-h6 font-weight-bold">{{ editingId ? '编辑自设角色' : '新建自设角色' }}</h3>
+          <h3 class="text-title-large font-weight-bold">{{ editingId ? '编辑自设角色' : '新建自设角色' }}</h3>
           <v-btn icon="mdi-close" variant="text" size="small" @click="modalOpen = false" />
         </div>
         <v-form class="d-flex flex-column ga-3" @submit.prevent="handleSave">
@@ -277,5 +280,5 @@ async function startChat(charId: string) {
         </v-form>
       </v-card>
     </v-dialog>
-  </v-container>
+  </div>
 </template>

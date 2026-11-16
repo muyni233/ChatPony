@@ -153,12 +153,12 @@ async function sendTest() {
   <div class="d-flex flex-column ga-5">
     <!-- Domain & Verification Policy -->
     <v-card border class="pa-5">
-      <h3 class="text-subtitle-1 font-weight-bold mb-4">邮箱验证与域名规则</h3>
+      <h3 class="text-title-medium font-weight-bold mb-4">邮箱验证与域名规则</h3>
       <v-form class="d-flex flex-column ga-4" @submit.prevent="savePolicy">
         <v-sheet color="surface-light" rounded="lg" class="pa-3 px-4 d-flex align-center justify-space-between ga-3">
           <div>
-            <div class="text-body-1 font-weight-medium">新用户注册必须验证邮箱</div>
-            <div class="text-caption text-medium-emphasis">开启前请先确认下方 SMTP 发信已配置并测试通过</div>
+            <div class="text-body-large font-weight-medium">新用户注册必须验证邮箱</div>
+            <div class="text-body-small text-medium-emphasis">开启前请先确认下方 SMTP 发信已配置并测试通过</div>
           </div>
           <v-switch v-model="policyForm.requireEmailVerification" hide-details />
         </v-sheet>
@@ -183,7 +183,7 @@ async function sendTest() {
 
     <!-- SMTP Config -->
     <v-card border class="pa-5">
-      <h3 class="text-subtitle-1 font-weight-bold mb-4 d-flex align-center ga-2">
+      <h3 class="text-title-medium font-weight-bold mb-4 d-flex align-center ga-2">
         <v-icon color="primary" size="20">mdi-email-outline</v-icon>
         SMTP 发信配置
       </h3>
@@ -231,7 +231,7 @@ async function sendTest() {
     <!-- Diagnostics Log -->
     <v-card border class="pa-5">
       <div class="d-flex align-center justify-space-between mb-4 flex-wrap ga-3">
-        <h3 class="text-subtitle-1 font-weight-bold">邮件投递诊断日志（保留 30 天）</h3>
+        <h3 class="text-title-medium font-weight-bold">邮件投递诊断日志（保留 30 天）</h3>
         <div class="d-flex ga-2 align-center">
           <v-select v-model="statusFilter" :items="statusItems" density="compact" style="width:140px" />
           <v-btn variant="outlined" size="small" icon="mdi-refresh" aria-label="刷新日志" @click="loadDeliveries" />
@@ -243,17 +243,17 @@ async function sendTest() {
           <div class="d-flex align-center ga-2 flex-wrap">
             <v-chip size="x-small" :color="d.status === 'success' ? 'success' : 'error'" variant="tonal">{{ d.status }}</v-chip>
             <v-chip size="x-small" variant="tonal">{{ d.kind }}</v-chip>
-            <strong class="text-body-2">{{ d.recipient || d.smtpHost }}</strong>
-            <span class="ms-auto text-caption text-medium-emphasis">
+            <strong class="text-body-medium">{{ d.recipient || d.smtpHost }}</strong>
+            <span class="ms-auto text-body-small text-medium-emphasis">
               {{ formatDateTime(d.createdAt) }} · {{ d.durationMs ?? 0 }}ms
             </span>
           </div>
-          <div class="text-body-2 text-medium-emphasis mt-1">
+          <div class="text-body-medium text-medium-emphasis mt-1">
             {{ d.summary }} <span v-if="d.hint">· 建议：{{ d.hint }}</span>
           </div>
         </v-sheet>
       </div>
-      <div v-else class="text-body-2 text-medium-emphasis">暂无邮件投递记录。</div>
+      <div v-else class="text-body-medium text-medium-emphasis">暂无邮件投递记录。</div>
     </v-card>
   </div>
 </template>

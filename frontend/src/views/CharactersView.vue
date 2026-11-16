@@ -91,16 +91,22 @@ async function startGroup() {
 </script>
 
 <template>
-  <v-container fluid class="pa-5 pa-md-8" style="max-width:1180px">
-    <div class="d-flex align-end justify-space-between flex-wrap ga-4 mb-5">
+  <div class="cp-page">
+    <header class="cp-page-header">
       <div>
-        <h1 class="text-h5 text-sm-h4 font-weight-bold">角色</h1>
-        <p class="text-body-2 text-medium-emphasis mt-1 mb-0">
-          点击「开始单聊」立即进入一对一对话，或勾选 2～8 位角色开启 @ 点名群聊
+        <h1 class="cp-page-title">角色</h1>
+        <p class="cp-page-subtitle">
+          挑一位开始单聊，或勾选 2～8 位角色，开一场可以 @ 点名的群聊。
         </p>
       </div>
-      <div class="d-flex align-center flex-wrap ga-3">
-        <v-btn-toggle v-model="scope" mandatory variant="outlined" color="primary" density="compact" rounded="pill">
+      <div class="d-flex align-center flex-wrap ga-2">
+        <v-btn-toggle
+          v-model="scope"
+          mandatory
+          density="compact"
+          rounded="lg"
+          class="cp-seg"
+        >
           <v-btn value="all">全部</v-btn>
           <v-btn value="public">官方</v-btn>
           <v-btn value="private">自设</v-btn>
@@ -108,99 +114,118 @@ async function startGroup() {
         <v-text-field
           v-model="search"
           prepend-inner-icon="mdi-magnify"
-          placeholder="搜索名称、标签或简介..."
+          placeholder="搜索名称、标签或简介"
           density="compact"
-          rounded="pill"
           clearable
-          style="min-width:240px"
+          class="cp-search"
         />
+      </div>
+    </header>
+
+    <div v-if="allTags.length" class="cp-tagbar mb-6">
+      <button
+        type="button"
+        class="cp-filter"
+        :class="{ 'is-on': selectedTag === 'all' }"
+        @click="selectedTag = 'all'"
+      >
+        全部 <span class="cp-faint">{{ store.characters.length }}</span>
+      </button>
+      <button
+        v-for="tag in allTags"
+        :key="tag"
+        type="button"
+        class="cp-filter"
+        :class="{ 'is-on': selectedTag === tag }"
+        @click="selectedTag = tag"
+      >
+        {{ tag }}
+      </button>
+    </div>
+
+    <div v-if="filtered.length" class="cp-grid">
+      <div
+        v-for="ch in filtered"
+        :key="ch.id"
+        class="cp-char-card"
+        :class="{ 'is-selected': groupSelection.includes(ch.id) }"
+        :style="{ '--char': ch.color || '#245C50' }"
+      >
+        <div class="cp-char-card__wash" />
+        <div class="d-flex align-start ga-3 mb-3 position-relative">
+          <AvatarBadge :name="ch.name" :avatar="ch.avatar" :color="ch.color" :size="52" rounded="lg" />
+          <div class="flex-grow-1 min-width-0 pt-1">
+            <div class="d-flex align-center ga-2">
+              <span class="text-title-medium font-weight-bold text-truncate">{{ ch.name }}</span>
+              <v-chip v-if="ch.ownerId" size="x-small" color="tertiary" variant="tonal">自设</v-chip>
+            </div>
+            <div class="text-body-small cp-faint">@{{ ch.slug }}</div>
+          </div>
+          <button
+            type="button"
+            class="cp-pick"
+            :class="{ 'is-on': groupSelection.includes(ch.id) }"
+            :aria-pressed="groupSelection.includes(ch.id)"
+            :title="groupSelection.includes(ch.id) ? '移出群聊选择' : '加入群聊'"
+            @click="toggleGroupMember(ch.id)"
+          >
+            <v-icon :icon="groupSelection.includes(ch.id) ? 'mdi-check' : 'mdi-plus'" size="16" />
+          </button>
+        </div>
+
+        <p class="cp-char-card__desc">
+          {{ ch.description || '还没有撰写角色介绍。' }}
+        </p>
+
+        <div v-if="ch.tags.length" class="d-flex flex-wrap ga-1 mb-4 position-relative">
+          <span v-for="tag in ch.tags" :key="tag" class="cp-tag">{{ tag }}</span>
+        </div>
+
+        <v-btn
+          color="primary"
+          variant="tonal"
+          block
+          class="flex-grow-0"
+          prepend-icon="mdi-message-outline"
+          :loading="busyId === ch.id"
+          @click="startPrivate(ch.id)"
+        >
+          开始单聊
+        </v-btn>
       </div>
     </div>
 
-    <v-chip-group v-if="allTags.length" v-model="selectedTag" mandatory color="primary" class="mb-5">
-      <v-chip value="all" variant="tonal">全部（{{ store.characters.length }}）</v-chip>
-      <v-chip v-for="tag in allTags" :key="tag" :value="tag" variant="tonal">{{ tag }}</v-chip>
-    </v-chip-group>
-
-    <v-row v-if="filtered.length">
-      <v-col v-for="ch in filtered" :key="ch.id" cols="12" sm="6" lg="4">
-        <v-card color="surface" class="fill-height d-flex flex-column pa-4">
-          <div class="d-flex align-center ga-3 mb-3">
-            <AvatarBadge :name="ch.name" :avatar="ch.avatar" :color="ch.color" :size="54" rounded="lg" />
-            <div class="flex-grow-1" style="min-width:0">
-              <div class="text-subtitle-1 font-weight-bold d-flex align-center ga-1">
-                <span class="text-truncate">{{ ch.name }}</span>
-                <v-chip v-if="ch.ownerId" size="x-small" color="tertiary" variant="tonal">自设</v-chip>
-              </div>
-              <div class="text-caption text-medium-emphasis">@{{ ch.slug }}</div>
-            </div>
-            <v-btn
-              :icon="groupSelection.includes(ch.id) ? 'mdi-check-circle' : 'mdi-account-multiple-plus-outline'"
-              :color="groupSelection.includes(ch.id) ? 'primary' : undefined"
-              variant="text"
-              size="small"
-              :title="groupSelection.includes(ch.id) ? '移出群聊选择' : '选入群聊队列'"
-              @click="toggleGroupMember(ch.id)"
-            />
-          </div>
-
-          <p class="text-body-2 text-medium-emphasis flex-grow-1 mb-3">
-            {{ ch.description || '还没有撰写角色介绍。' }}
-          </p>
-
-          <div v-if="ch.tags.length" class="d-flex flex-wrap ga-1 mb-3">
-            <v-chip v-for="tag in ch.tags" :key="tag" size="x-small" variant="tonal">{{ tag }}</v-chip>
-          </div>
-
-          <v-btn
-            color="primary"
-            variant="tonal"
-            class="w-100 flex-grow-0"
-            prepend-icon="mdi-chat-plus-outline"
-            :loading="busyId === ch.id"
-            @click="startPrivate(ch.id)"
-          >
-            开始单聊
-          </v-btn>
-        </v-card>
-      </v-col>
-    </v-row>
-
     <EmptyState
       v-else
-      icon="mdi-creation-outline"
+      icon="mdi-magnify"
       title="没有找到匹配的角色"
-      description="试试切换筛选条件或搜索关键词，也可以在「自设角色」创建新角色。"
+      description="换个关键词或筛选条件试试，也可以在「自设角色」创建新角色。"
     />
 
-    <!-- Floating Group Selection Dock -->
-    <v-snackbar
-      :model-value="groupSelection.length >= 1"
-      :timeout="-1"
-      location="bottom center"
-      color="surface"
-      elevation="6"
-      rounded="pill"
-    >
-      <div class="d-flex align-center ga-3">
-        <div class="d-flex align-center">
+    <!-- Floating group dock -->
+    <transition name="cp-dock">
+      <div v-if="groupSelection.length >= 1" class="cp-dock">
+        <div class="cp-stack">
           <AvatarBadge
             v-for="c in selectedChars"
             :key="c.id"
             :name="c.name"
             :avatar="c.avatar"
             :color="c.color"
-            :size="28"
-            class="mr-1"
+            :size="30"
+            ring
           />
         </div>
-        <span class="text-body-2">
-          已选 <strong>{{ groupSelection.length }}</strong> 位
+        <span class="text-body-medium">
+          已选 <strong>{{ groupSelection.length }}</strong> / 8
+          <span v-if="groupSelection.length < 2" class="cp-faint">· 至少 2 位</span>
         </span>
         <v-btn size="small" variant="text" @click="groupSelection = []">清空</v-btn>
         <v-btn
           size="small"
           color="primary"
+          variant="flat"
+          prepend-icon="mdi-account-group-outline"
           :disabled="groupSelection.length < 2"
           :loading="busyId === 'group'"
           @click="startGroup"
@@ -208,6 +233,121 @@ async function startGroup() {
           发起群聊
         </v-btn>
       </div>
-    </v-snackbar>
-  </v-container>
+    </transition>
+  </div>
 </template>
+
+<style scoped>
+.cp-seg {
+  border: 1px solid var(--cp-hairline);
+  background: rgb(var(--v-theme-surface));
+  height: 40px !important;
+  padding: 3px;
+}
+.cp-seg :deep(.v-btn) {
+  height: 32px !important;
+  border-radius: 8px !important;
+  font-size: 0.8125rem;
+  color: rgba(var(--v-theme-on-surface), 0.62);
+}
+.cp-seg :deep(.v-btn--active) {
+  background: rgba(var(--v-theme-primary), 0.12);
+  color: rgb(var(--v-theme-primary));
+}
+.cp-seg :deep(.v-btn--active > .v-btn__overlay) {
+  opacity: 0;
+}
+
+.cp-tagbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.cp-filter {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: rgba(var(--v-theme-on-surface), 0.7);
+  border: 1px solid var(--cp-hairline);
+  background: rgb(var(--v-theme-surface));
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.cp-filter:hover {
+  border-color: rgba(var(--v-theme-on-surface), 0.2);
+}
+.cp-filter.is-on {
+  color: rgb(var(--v-theme-on-primary));
+  background: rgb(var(--v-theme-primary));
+  border-color: rgb(var(--v-theme-primary));
+}
+.cp-filter.is-on .cp-faint {
+  color: inherit;
+  opacity: 0.7;
+}
+
+.cp-char-card.is-selected {
+  border-color: rgb(var(--v-theme-primary));
+  box-shadow: 0 0 0 1px rgb(var(--v-theme-primary)), var(--cp-shadow-md);
+}
+.cp-pick {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  border: 1px solid var(--cp-hairline);
+  background: rgb(var(--v-theme-surface));
+  color: rgba(var(--v-theme-on-surface), 0.6);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.cp-pick:hover {
+  color: rgb(var(--v-theme-primary));
+  border-color: rgba(var(--v-theme-primary), 0.4);
+}
+.cp-pick.is-on {
+  color: rgb(var(--v-theme-on-primary));
+  background: rgb(var(--v-theme-primary));
+  border-color: rgb(var(--v-theme-primary));
+}
+
+.cp-dock {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 1010;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 8px 8px 12px;
+  border-radius: 16px;
+  background: rgb(var(--v-theme-surface));
+  border: 1px solid var(--cp-hairline);
+  box-shadow: var(--cp-shadow-lg);
+  white-space: nowrap;
+}
+@media (min-width: 960px) {
+  .cp-dock {
+    left: calc(50% + 132px);
+  }
+}
+@media (max-width: 959px) {
+  .cp-dock {
+    bottom: 76px;
+  }
+}
+.cp-dock-enter-active,
+.cp-dock-leave-active {
+  transition: opacity 0.2s, transform 0.25s var(--cp-ease);
+}
+.cp-dock-enter-from,
+.cp-dock-leave-to {
+  opacity: 0;
+  transform: translate(-50%, 12px);
+}
+</style>

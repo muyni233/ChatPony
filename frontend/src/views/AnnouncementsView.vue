@@ -7,22 +7,74 @@ const store = useAppStore();
 </script>
 
 <template>
-  <v-container fluid class="pa-5 pa-md-8" style="max-width:1000px">
-    <div class="mb-5">
-      <h1 class="text-h5 text-sm-h4 font-weight-bold">站内公告</h1>
+  <div class="cp-page cp-page--narrow">
+    <div class="cp-page-header">
+      <div>
+        <h1 class="cp-page-title">站内公告</h1>
+        <p class="cp-page-subtitle">版本更新与服务说明。</p>
+      </div>
     </div>
 
     <div v-if="store.announcements.length" class="d-flex flex-column ga-4">
-      <v-card v-for="item in store.announcements" :key="item.id" color="surface" class="pa-5">
-        <div class="d-flex align-center flex-wrap ga-2 mb-3">
-          <v-chip v-if="item.pinned" size="small" color="tertiary" variant="tonal">置顶</v-chip>
-          <h2 class="text-h6 font-weight-bold mb-0">{{ item.title }}</h2>
-          <span class="text-caption text-medium-emphasis ml-auto">{{ formatDateTime(item.createdAt) }}</span>
+      <article v-for="item in store.announcements" :key="item.id" class="cp-panel cp-ann" :class="{ 'is-pinned': item.pinned }">
+        <div class="cp-ann__meta">
+          <span v-if="item.pinned" class="cp-ann__pin"><v-icon icon="mdi-pin" size="12" />置顶</span>
+          <time :datetime="item.createdAt">{{ formatDateTime(item.createdAt) }}</time>
         </div>
-        <div class="text-body-1" style="white-space:pre-wrap;line-height:1.75">{{ item.content }}</div>
-      </v-card>
+        <h2 class="cp-ann__title">{{ item.title }}</h2>
+        <div class="cp-ann__body">{{ item.content }}</div>
+      </article>
     </div>
 
     <EmptyState v-else icon="mdi-bullhorn-outline" title="暂无已发布的公告" description="当管理员发布版本更新或服务说明时，会显示在这里。" />
-  </v-container>
+  </div>
 </template>
+
+<style scoped>
+.cp-ann {
+  padding: 22px 24px;
+  position: relative;
+}
+.cp-ann.is-pinned::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 22px;
+  bottom: 22px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: rgb(var(--v-theme-primary));
+}
+.cp-ann__meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.75rem;
+  color: rgba(var(--v-theme-on-surface), 0.5);
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 6px;
+}
+.cp-ann__pin {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-weight: 700;
+  color: rgb(var(--v-theme-primary));
+}
+.cp-ann__title {
+  margin: 0 0 8px;
+  font-size: 1.125rem;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+}
+.cp-ann__body {
+  font-size: 0.9375rem;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  color: rgba(var(--v-theme-on-surface), 0.78);
+}
+@media (max-width: 599px) {
+  .cp-ann { padding: 18px; }
+}
+</style>

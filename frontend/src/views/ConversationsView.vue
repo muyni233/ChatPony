@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import AvatarBadge from '../components/m3/AvatarBadge.vue';
 import EmptyState from '../components/m3/EmptyState.vue';
 import { api, ApiError } from '../lib/api';
 import { deleteCachedConversation } from '../lib/conversationCache';
@@ -9,6 +10,12 @@ import { useAppStore } from '../stores/app';
 const store = useAppStore();
 const search = ref('');
 const deletingId = ref<string | null>(null);
+
+const charById = computed(() => {
+  const m = new Map<string, (typeof store.characters)[number]>();
+  for (const c of store.characters) m.set(c.id, c);
+  return m;
+});
 
 const filtered = computed(() => {
   const q = search.value.trim().toLowerCase();
@@ -34,26 +41,26 @@ async function handleDelete(id: string) {
 </script>
 
 <template>
-  <v-container fluid class="pa-5 pa-md-8" style="max-width:1180px">
-    <div class="d-flex align-end justify-space-between flex-wrap ga-4 mb-5">
+  <div class="cp-page cp-page--narrow">
+    <header class="cp-page-header">
       <div>
-        <h1 class="text-h5 text-sm-h4 font-weight-bold">对话记录</h1>
+        <h1 class="cp-page-title">对话记录</h1>
+        <p v-if="store.user" class="cp-page-subtitle">共 {{ store.conversations.length }} 段对话，按最近活跃排序。</p>
       </div>
-      <div class="d-flex align-center flex-wrap ga-3">
+      <div class="d-flex align-center flex-wrap ga-2">
         <v-text-field
           v-model="search"
           prepend-inner-icon="mdi-magnify"
-          placeholder="搜索标题或消息内容..."
+          placeholder="搜索标题或消息"
           density="compact"
-          rounded="pill"
           clearable
-          style="min-width:240px"
+          class="cp-search"
         />
-        <v-btn color="primary" prepend-icon="mdi-chat-plus-outline" @click="store.openNewChat()">
-          新建对话
+        <v-btn color="primary" variant="flat" height="40" prepend-icon="mdi-plus" @click="store.openNewChat()">
+          新建
         </v-btn>
       </div>
-    </div>
+    </header>
 
     <EmptyState
       v-if="!store.user"
@@ -66,47 +73,53 @@ async function handleDelete(id: string) {
       </template>
     </EmptyState>
 
-    <v-card v-else-if="filtered.length" color="surface">
-      <v-list lines="two" class="bg-transparent">
-        <v-list-item
-          v-for="conv in filtered"
-          :key="conv.id"
-          :to="`/chat/${conv.id}`"
-          class="py-3"
-        >
-          <template #prepend>
-            <v-avatar :color="conv.kind === 'group' ? 'secondary-container' : 'primary-container'" rounded="lg">
-              <v-icon
-                :icon="conv.kind === 'group' ? 'mdi-account-group-outline' : 'mdi-message-outline'"
-                :color="conv.kind === 'group' ? 'on-secondary-container' : 'on-primary-container'"
-              />
-            </v-avatar>
-          </template>
-          <v-list-item-title class="font-weight-bold d-flex align-center ga-2">
-            <span>{{ conv.title }}</span>
-            <v-chip size="x-small" :color="conv.kind === 'group' ? 'secondary' : 'primary'" variant="tonal">
-              {{ conv.kind === 'group' ? `群聊 · ${conv.characterIds.length} 人` : '私聊' }}
-            </v-chip>
-          </v-list-item-title>
-          <v-list-item-subtitle>
-            {{ conv.lastMessage || '（尚无对话消息，点击继续）' }}
-          </v-list-item-subtitle>
-          <template #append>
-            <span class="text-caption text-medium-emphasis mr-2">
-              {{ formatRelativeTime(conv.updatedAt) }}
-            </span>
-            <v-btn
-              icon="mdi-delete-outline"
-              variant="text"
-              size="small"
-              color="error"
-              :loading="deletingId === conv.id"
-              @click.prevent="handleDelete(conv.id)"
-            />
-          </template>
-        </v-list-item>
-      </v-list>
-    </v-card>
+    <div v-else-if="filtered.length" class="cp-panel cp-conv-list">
+      <router-link
+        v-for="conv in filtered"
+        :key="conv.id"
+        :to="`/chat/${conv.id}`"
+        class="cp-conv-row"
+      >
+        <div class="cp-conv-av" :class="{ 'is-group': conv.characterIds.length > 1 }">
+          <AvatarBadge
+            v-for="cid in conv.characterIds.slice(0, conv.characterIds.length > 1 ? 2 : 1)"
+            :key="cid"
+            :name="charById.get(cid)?.name ?? '角'"
+            :avatar="charById.get(cid)?.avatar"
+            :color="charById.get(cid)?.color"
+            :size="conv.characterIds.length > 1 ? 30 : 42"
+            :ring="conv.characterIds.length > 1"
+          />
+        </div>
+        <div class="flex-grow-1" style="min-width:0">
+          <div class="d-flex align-center ga-2">
+            <span class="text-title-small font-weight-bold text-truncate">{{ conv.title }}</span>
+            <span v-if="conv.kind === 'group'" class="cp-kind">群聊 · {{ conv.characterIds.length }}</span>
+          </div>
+          <div class="text-body-medium cp-muted text-truncate">
+            {{ conv.lastMessage || '尚无消息，点击开始' }}
+          </div>
+        </div>
+        <span class="text-body-small cp-faint flex-shrink-0">{{ formatRelativeTime(conv.updatedAt) }}</span>
+        <v-btn
+          icon="mdi-trash-can-outline"
+          variant="text"
+          size="small"
+          density="comfortable"
+          class="cp-conv-row__del"
+          aria-label="删除对话"
+          :loading="deletingId === conv.id"
+          @click.prevent.stop="handleDelete(conv.id)"
+        />
+      </router-link>
+    </div>
+
+    <EmptyState
+      v-else-if="search"
+      icon="mdi-magnify"
+      title="没有匹配的对话"
+      description="换个关键词试试。"
+    />
 
     <EmptyState
       v-else
@@ -118,5 +131,68 @@ async function handleDelete(id: string) {
         <v-btn color="primary" @click="store.openNewChat()">开启第一段对话</v-btn>
       </template>
     </EmptyState>
-  </v-container>
+  </div>
 </template>
+
+<style scoped>
+.cp-conv-list {
+  overflow: hidden;
+}
+.cp-conv-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 10px 14px 16px;
+  color: inherit;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+.cp-conv-row + .cp-conv-row {
+  border-top: 1px solid var(--cp-hairline);
+}
+.cp-conv-row:hover {
+  background: rgba(var(--v-theme-on-surface), 0.03);
+}
+.cp-conv-av {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+}
+.cp-conv-av.is-group > :first-child {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+.cp-conv-av.is-group > :nth-child(2) {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+}
+.cp-conv-row__del {
+  color: rgba(var(--v-theme-on-surface), 0.45);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.cp-conv-row:hover .cp-conv-row__del,
+.cp-conv-row__del:focus-visible {
+  opacity: 1;
+}
+.cp-conv-row__del:hover {
+  color: rgb(var(--v-theme-error));
+}
+@media (hover: none) {
+  .cp-conv-row__del {
+    opacity: 1;
+  }
+}
+.cp-kind {
+  flex-shrink: 0;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 6px;
+  color: rgb(var(--v-theme-secondary));
+  background: rgba(var(--v-theme-secondary), 0.12);
+}
+</style>

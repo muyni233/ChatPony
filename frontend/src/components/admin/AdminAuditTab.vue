@@ -81,26 +81,26 @@ async function clearAll() {
     <v-row v-if="stats" density="compact">
       <v-col cols="6" sm="3">
         <v-card color="surface-light" class="pa-4">
-          <div class="text-caption text-medium-emphasis">24h 总请求</div>
-          <div class="text-h5 font-weight-bold mt-1">{{ stats.total }}</div>
+          <div class="text-body-small text-medium-emphasis">24h 总请求</div>
+          <div class="text-headline-small font-weight-bold mt-1">{{ stats.total }}</div>
         </v-card>
       </v-col>
       <v-col cols="6" sm="3">
         <v-card color="surface-light" class="pa-4">
-          <div class="text-caption text-medium-emphasis">成功 / 失败</div>
-          <div class="text-h5 font-weight-bold mt-1">{{ stats.success }} / {{ stats.failed }}</div>
+          <div class="text-body-small text-medium-emphasis">成功 / 失败</div>
+          <div class="text-headline-small font-weight-bold mt-1">{{ stats.success }} / {{ stats.failed }}</div>
         </v-card>
       </v-col>
       <v-col cols="6" sm="3">
         <v-card color="surface-light" class="pa-4">
-          <div class="text-caption text-medium-emphasis">平均延迟</div>
-          <div class="text-h5 font-weight-bold mt-1">{{ stats.avgDurationMs }} ms</div>
+          <div class="text-body-small text-medium-emphasis">平均延迟</div>
+          <div class="text-headline-small font-weight-bold mt-1">{{ stats.avgDurationMs }} ms</div>
         </v-card>
       </v-col>
       <v-col cols="6" sm="3">
         <v-card color="surface-light" class="pa-4">
-          <div class="text-caption text-medium-emphasis">Token 输入 / 输出</div>
-          <div class="text-h6 font-weight-bold mt-1">{{ stats.inputTokens }} / {{ stats.outputTokens }}</div>
+          <div class="text-body-small text-medium-emphasis">Token 输入 / 输出</div>
+          <div class="text-title-large font-weight-bold mt-1">{{ stats.inputTokens }} / {{ stats.outputTokens }}</div>
         </v-card>
       </v-col>
     </v-row>
@@ -141,12 +141,12 @@ async function clearAll() {
             {{ item.status }}
           </v-chip>
           <v-chip size="x-small" variant="tonal">{{ item.kind }}</v-chip>
-          <strong class="text-body-2">{{ item.model }}</strong>
-          <span class="text-caption text-medium-emphasis">
+          <strong class="text-body-medium">{{ item.model }}</strong>
+          <span class="text-body-small text-medium-emphasis">
             {{ item.supplierName || item.protocol }} · HTTP {{ item.httpStatus ?? '—' }} · {{ item.durationMs ?? 0 }}ms
           </span>
-          <span v-if="item.userName" class="text-caption text-medium-emphasis">用户: {{ item.userName }}</span>
-          <span class="ms-auto text-caption text-medium-emphasis">
+          <span v-if="item.userName" class="text-body-small text-medium-emphasis">用户: {{ item.userName }}</span>
+          <span class="ms-auto text-body-small text-medium-emphasis">
             {{ formatDateTime(item.createdAt) }}
           </span>
           <v-btn variant="outlined" size="small" prepend-icon="mdi-eye-outline" @click="openDetail(item.id)">
@@ -154,7 +154,7 @@ async function clearAll() {
           </v-btn>
         </v-sheet>
       </div>
-      <div v-else class="text-body-2 text-medium-emphasis">暂无审计记录。</div>
+      <div v-else class="text-body-medium text-medium-emphasis">暂无审计记录。</div>
 
       <div v-if="list && list.total > list.pageSize" class="d-flex justify-center mt-4">
         <v-pagination
@@ -172,19 +172,19 @@ async function clearAll() {
           <span class="font-weight-bold">模型请求审计详情（已脱敏）</span>
           <v-btn icon="mdi-close" variant="text" size="small" @click="detailOpen = false" />
         </v-card-title>
-        <v-card-text v-if="detail" class="d-flex flex-column ga-3 text-body-2">
+        <v-card-text v-if="detail" class="d-flex flex-column ga-3 text-body-medium">
           <div><strong>端点：</strong><code class="font-mono">{{ detail.endpoint }}</code></div>
           <v-alert v-if="detail.errorMessage" type="error" variant="tonal" density="compact">
             {{ detail.errorCode }} · {{ detail.errorMessage }}
           </v-alert>
           <div>
-            <div class="text-caption font-weight-bold mb-1">
+            <div class="text-body-small font-weight-bold mb-1">
               请求体 {{ detail.requestTruncated ? '(已截断至 16KB)' : '' }}
             </div>
             <pre class="cp-code-pre">{{ detail.requestBody || '未开启正文字段采集或无请求体' }}</pre>
           </div>
           <div>
-            <div class="text-caption font-weight-bold mb-1">
+            <div class="text-body-small font-weight-bold mb-1">
               响应体 {{ detail.responseTruncated ? '(已截断至 16KB)' : '' }}
             </div>
             <pre class="cp-code-pre">{{ detail.responseBody || '未开启正文字段采集或无响应体' }}</pre>

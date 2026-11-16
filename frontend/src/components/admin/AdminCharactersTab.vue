@@ -134,8 +134,8 @@ async function onClearAvatar(id: string) {
   <v-card border class="pa-5">
     <div class="d-flex align-center justify-space-between ga-3 flex-wrap mb-4">
       <div>
-        <h3 class="text-subtitle-1 font-weight-bold">官方角色馆（{{ characters.length }}）</h3>
-        <div class="text-body-2 text-medium-emphasis">维护平台公开发布角色与头像配置</div>
+        <h3 class="text-title-medium font-weight-bold">官方角色馆（{{ characters.length }}）</h3>
+        <div class="text-body-medium text-medium-emphasis">维护平台公开发布角色与头像配置</div>
       </div>
       <v-btn color="primary" prepend-icon="mdi-plus" size="small" @click="openCreate">新建官方角色</v-btn>
     </div>
@@ -147,12 +147,12 @@ async function onClearAvatar(id: string) {
             <AvatarBadge :name="c.name" :avatar="c.avatar" :color="c.color" :size="48" />
             <div class="min-width-0 flex-1-1">
               <div class="d-flex align-center ga-2 flex-wrap">
-                <span class="font-weight-bold text-body-1">{{ c.name }}</span>
+                <span class="font-weight-bold text-body-large">{{ c.name }}</span>
                 <v-chip size="x-small" :color="c.active ? 'success' : 'default'" variant="tonal">
                   {{ c.active ? '公开' : '未启用' }}
                 </v-chip>
               </div>
-              <div class="text-caption text-medium-emphasis">@{{ c.slug }}</div>
+              <div class="text-body-small text-medium-emphasis">@{{ c.slug }}</div>
             </div>
           </div>
 
@@ -165,7 +165,7 @@ async function onClearAvatar(id: string) {
             @clear="onClearAvatar(c.id)"
           />
 
-          <p class="text-body-2 text-medium-emphasis mb-0 flex-1-1">{{ c.description || '暂无简介' }}</p>
+          <p class="text-body-medium text-medium-emphasis mb-0 flex-1-1">{{ c.description || '暂无简介' }}</p>
 
           <div class="d-flex ga-2 mt-auto">
             <v-btn

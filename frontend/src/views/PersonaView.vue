@@ -48,12 +48,14 @@ async function save() {
 </script>
 
 <template>
-  <v-container fluid class="pa-5 pa-md-8" style="max-width:1000px">
-    <div class="mb-5">
-      <h1 class="text-h5 text-sm-h4 font-weight-bold">个人设定</h1>
-      <p class="text-body-2 text-medium-emphasis mt-1">
+  <div class="cp-page cp-page--narrow">
+    <div class="cp-page-header">
+      <div>
+        <h1 class="cp-page-title">个人设定</h1>
+      <p class="cp-page-subtitle">
         开启后，你的名称、种族、人称与背景设定会以轻量化参考的方式注入每次对话的系统提示中。
       </p>
+      </div>
     </div>
 
     <EmptyState v-if="!store.user" icon="mdi-account-badge-outline" title="登录后编辑你的个人设定" description="设定好你的角色形象，让 AI 伙伴记住你的样子。">
@@ -66,8 +68,8 @@ async function save() {
       <v-form class="d-flex flex-column ga-4" @submit.prevent="save">
         <v-sheet color="surface-light" rounded="lg" class="pa-4 d-flex align-center justify-space-between ga-4">
           <div>
-            <div class="text-subtitle-2 font-weight-bold">在对话中注入个人设定</div>
-            <div class="text-caption text-medium-emphasis">仅发送非空字段，总长度自动控制，避免挤压上下文窗口</div>
+            <div class="text-title-small font-weight-bold">在对话中注入个人设定</div>
+            <div class="text-body-small text-medium-emphasis">仅发送非空字段，总长度自动控制，避免挤压上下文窗口</div>
           </div>
           <v-switch v-model="form.enabled" aria-label="启用个人设定" />
         </v-sheet>
@@ -95,5 +97,5 @@ async function save() {
         </div>
       </v-form>
     </v-card>
-  </v-container>
+  </div>
 </template>

@@ -81,8 +81,8 @@ async function handleCreate() {
     <v-card class="pa-6" color="surface">
       <div class="d-flex align-start justify-space-between mb-4">
         <div>
-          <h3 class="text-h5 font-weight-bold">发起新对话</h3>
-          <div class="text-body-2 text-medium-emphasis mt-1">选择 1 位角色开启单聊，或多选 2～8 位角色组建群聊</div>
+          <h3 class="text-headline-small font-weight-bold">发起新对话</h3>
+          <div class="text-body-medium text-medium-emphasis mt-1">选择 1 位角色开启单聊，或多选 2～8 位角色组建群聊</div>
         </div>
         <v-btn icon="mdi-close" variant="text" size="small" aria-label="关闭弹窗" @click="store.closeNewChat()" />
       </div>
@@ -110,11 +110,11 @@ async function handleCreate() {
           >
             <AvatarBadge :name="ch.name" :avatar="ch.avatar" :color="ch.color" :size="42" rounded="lg" />
             <div class="flex-grow-1" style="min-width:0">
-              <div class="font-weight-bold text-body-2 d-flex align-center ga-1">
+              <div class="font-weight-bold text-body-medium d-flex align-center ga-1">
                 <span class="text-truncate">{{ ch.name }}</span>
                 <v-chip v-if="ch.ownerId" size="x-small" color="tertiary">自设</v-chip>
               </div>
-              <div class="text-caption text-medium-emphasis text-truncate">{{ ch.description || ch.slug }}</div>
+              <div class="text-body-small text-medium-emphasis text-truncate">{{ ch.description || ch.slug }}</div>
             </div>
             <v-icon :icon="selectedIds.includes(ch.id) ? 'mdi-check-circle' : 'mdi-circle-outline'" />
           </v-card>
@@ -131,7 +131,7 @@ async function handleCreate() {
           />
         </v-col>
         <v-col v-if="selectedIds.length > 1" cols="12" md="6">
-          <div class="text-caption text-medium-emphasis mb-1">群聊最大连续响应轮数：{{ maxRounds }}</div>
+          <div class="text-body-small text-medium-emphasis mb-1">群聊最大连续响应轮数：{{ maxRounds }}</div>
           <v-slider v-model="maxRounds" :min="1" :max="store.settings.maxGroupRounds" :step="1" thumb-label />
         </v-col>
       </v-row>

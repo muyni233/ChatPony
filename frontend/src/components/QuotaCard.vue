@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { QuotaSnapshot } from '../lib/types';
+import type { QuotaSnapshot, QuotaWindow } from '../lib/types';
 import { formatDateTime } from '../lib/display';
 
 defineProps<{
@@ -11,77 +11,117 @@ function pct(value: number, max: number): number {
   if (max <= 0) return 100;
   return Math.max(0, Math.min(100, Math.round((value / max) * 100)));
 }
+
+function barColor(c: string): string {
+  return `rgb(var(--v-theme-${c}))`;
+}
+
+function tone(w: QuotaWindow): string {
+  const left = pct(w.remaining, w.limit);
+  if (left <= 10) return 'error';
+  if (left <= 25) return 'warning';
+  return '';
+}
 </script>
 
 <template>
-  <v-sheet v-if="compact" color="surface" rounded="lg" class="pa-3">
-    <div class="d-flex justify-space-between text-caption mb-1">
-      <span class="text-medium-emphasis">5 小时额度</span>
-      <strong class="font-weight-bold">{{ quota.fiveHour.remaining }} / {{ quota.fiveHour.limit }}</strong>
-    </div>
-    <v-progress-linear
-      :model-value="pct(quota.fiveHour.remaining, quota.fiveHour.limit)"
-      color="primary"
-      height="7"
-      rounded
-      class="mb-2"
-    />
-    <div class="d-flex justify-space-between text-caption mb-1">
-      <span class="text-medium-emphasis">7 天额度</span>
-      <strong class="font-weight-bold">{{ quota.sevenDay.remaining }} / {{ quota.sevenDay.limit }}</strong>
-    </div>
-    <v-progress-linear
-      :model-value="pct(quota.sevenDay.remaining, quota.sevenDay.limit)"
-      color="secondary"
-      height="7"
-      rounded
-    />
-  </v-sheet>
-
-  <v-card v-else color="surface" class="pa-5">
-    <div class="d-flex align-center justify-space-between mb-4 flex-wrap ga-2">
-      <div>
-        <div class="text-subtitle-1 font-weight-bold">对话调用额度（双滑动窗口）</div>
-        <div class="text-caption text-medium-emphasis">每次 AI 模型回复计 1 次调用额度</div>
+  <div v-if="compact" class="cp-quota-mini">
+    <div
+      v-for="row in [
+        { key: '5h', label: '5 小时', w: quota.fiveHour, color: 'primary' },
+        { key: '7d', label: '7 天', w: quota.sevenDay, color: 'secondary' },
+      ]"
+      :key="row.key"
+      class="cp-quota-mini__row"
+    >
+      <div class="d-flex justify-space-between align-baseline mb-1">
+        <span class="cp-quota-mini__label">{{ row.label }}额度</span>
+        <span class="cp-quota-mini__value">
+          <strong>{{ row.w.remaining }}</strong><span class="cp-faint"> / {{ row.w.limit }}</span>
+        </span>
+      </div>
+      <div class="cp-meter" style="--h:4px" role="progressbar" :aria-valuenow="row.w.remaining" aria-valuemin="0" :aria-valuemax="row.w.limit">
+        <span class="cp-meter__fill" :class="tone(row.w) && `bg-${tone(row.w)}`" :style="{ width: pct(row.w.remaining, row.w.limit) + '%', background: tone(row.w) ? undefined : barColor(row.color) }" />
       </div>
     </div>
-    <v-row density="compact">
-      <v-col cols="12" md="6">
-        <v-sheet color="surface-light" rounded="lg" class="pa-4">
-          <div class="d-flex justify-space-between text-body-2 mb-2">
-            <span>5 小时窗口（已用 {{ quota.fiveHour.used }}）</span>
-            <strong>剩余 {{ quota.fiveHour.remaining }} / {{ quota.fiveHour.limit }}</strong>
-          </div>
-          <v-progress-linear
-            :model-value="pct(quota.fiveHour.used, quota.fiveHour.limit)"
-            color="primary"
-            height="8"
-            rounded
-            class="mb-2"
-          />
-          <div class="text-caption text-medium-emphasis">
-            最早恢复：{{ formatDateTime(quota.fiveHour.resetsAt) }}
-          </div>
-        </v-sheet>
-      </v-col>
-      <v-col cols="12" md="6">
-        <v-sheet color="surface-light" rounded="lg" class="pa-4">
-          <div class="d-flex justify-space-between text-body-2 mb-2">
-            <span>7 天窗口（已用 {{ quota.sevenDay.used }}）</span>
-            <strong>剩余 {{ quota.sevenDay.remaining }} / {{ quota.sevenDay.limit }}</strong>
-          </div>
-          <v-progress-linear
-            :model-value="pct(quota.sevenDay.used, quota.sevenDay.limit)"
-            color="secondary"
-            height="8"
-            rounded
-            class="mb-2"
-          />
-          <div class="text-caption text-medium-emphasis">
-            最早恢复：{{ formatDateTime(quota.sevenDay.resetsAt) }}
-          </div>
-        </v-sheet>
-      </v-col>
-    </v-row>
-  </v-card>
+  </div>
+
+  <div v-else class="cp-panel pa-5 pa-sm-6">
+    <div class="d-flex align-center justify-space-between mb-5 flex-wrap ga-2">
+      <div>
+        <div class="text-title-medium font-weight-bold">对话调用额度</div>
+        <div class="text-body-small cp-muted">双滑动窗口 · 每次 AI 回复计 1 次</div>
+      </div>
+    </div>
+    <div class="cp-quota-grid">
+      <div
+        v-for="row in [
+          { key: '5h', label: '5 小时窗口', w: quota.fiveHour, color: 'primary' },
+          { key: '7d', label: '7 天窗口', w: quota.sevenDay, color: 'secondary' },
+        ]"
+        :key="row.key"
+        class="cp-quota-cell"
+      >
+        <div class="d-flex justify-space-between align-baseline mb-3">
+          <span class="text-body-medium cp-muted">{{ row.label }}</span>
+          <span class="text-body-small cp-faint">已用 {{ row.w.used }}</span>
+        </div>
+        <div class="cp-quota-big mb-3">
+          剩余 {{ row.w.remaining }} / {{ row.w.limit }}
+        </div>
+        <div class="cp-meter mb-3" style="--h:6px" role="progressbar" :aria-valuenow="row.w.remaining" aria-valuemin="0" :aria-valuemax="row.w.limit">
+          <span class="cp-meter__fill" :class="tone(row.w) && `bg-${tone(row.w)}`" :style="{ width: pct(row.w.remaining, row.w.limit) + '%', background: tone(row.w) ? undefined : barColor(row.color) }" />
+        </div>
+        <div class="text-body-small cp-faint">最早恢复：{{ formatDateTime(row.w.resetsAt) }}</div>
+      </div>
+    </div>
+  </div>
 </template>
+
+<style scoped>
+.cp-meter {
+  position: relative;
+  height: var(--h, 4px);
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(var(--v-theme-on-surface), 0.08);
+}
+.cp-meter__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  transition: width 0.4s var(--cp-ease, ease);
+}
+.cp-quota-mini {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--cp-radius-md);
+  background: rgba(var(--v-theme-on-surface), 0.035);
+}
+.cp-quota-mini__label {
+  font-size: 0.75rem;
+  color: rgba(var(--v-theme-on-surface), 0.6);
+}
+.cp-quota-mini__value {
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+.cp-quota-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+.cp-quota-cell {
+  padding: 16px 18px;
+  border-radius: var(--cp-radius-md);
+  background: rgba(var(--v-theme-on-surface), 0.035);
+}
+.cp-quota-big {
+  font-size: 1.125rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+</style>

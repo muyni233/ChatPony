@@ -102,8 +102,8 @@ async function resetUserQuota(id: string) {
   <v-card border class="pa-5">
     <div class="d-flex align-center justify-space-between ga-3 flex-wrap mb-4">
       <div>
-        <h3 class="text-subtitle-1 font-weight-bold">用户与额度管理（{{ users.length }}）</h3>
-        <div class="text-body-2 text-medium-emphasis">管理角色权限、5h/7d 对话上限及 OC 创建槽位</div>
+        <h3 class="text-title-medium font-weight-bold">用户与额度管理（{{ users.length }}）</h3>
+        <div class="text-body-medium text-medium-emphasis">管理角色权限、5h/7d 对话上限及 OC 创建槽位</div>
       </div>
       <v-btn color="primary" prepend-icon="mdi-plus" size="small" @click="createOpen = true">创建用户</v-btn>
     </div>
@@ -119,13 +119,13 @@ async function resetUserQuota(id: string) {
         <AvatarBadge :name="u.name" :avatar="u.avatar" :size="40" />
         <div class="flex-1-1" style="min-width:200px">
           <div class="d-flex align-center ga-2 flex-wrap">
-            <span class="font-weight-bold text-body-1">{{ u.name }}</span>
+            <span class="font-weight-bold text-body-large">{{ u.name }}</span>
             <v-chip size="x-small" :color="u.role === 'admin' ? 'tertiary' : 'primary'" variant="tonal">
               {{ u.role === 'admin' ? '管理员' : '成员' }}
             </v-chip>
             <v-chip v-if="u.disabled" size="x-small" color="error" variant="tonal">已停用</v-chip>
           </div>
-          <div class="text-caption text-medium-emphasis mt-1">
+          <div class="text-body-small text-medium-emphasis mt-1">
             {{ u.email }} · 5h上限 {{ u.limit5h }} · 7d上限 {{ u.limit7d }} · OC槽位 {{ u.characterSlots }}
           </div>
         </div>

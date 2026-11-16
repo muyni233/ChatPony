@@ -91,9 +91,12 @@ async function submitPassword() {
 </script>
 
 <template>
-  <v-container fluid class="pa-5 pa-md-8" style="max-width:1000px">
-    <div class="mb-5">
-      <h1 class="text-h5 text-sm-h4 font-weight-bold">账户与设置</h1>
+  <div class="cp-page cp-page--narrow">
+    <div class="cp-page-header">
+      <div>
+        <h1 class="cp-page-title">账户与设置</h1>
+        <p class="cp-page-subtitle">管理昵称、头像、时区与登录密码。</p>
+      </div>
     </div>
 
     <EmptyState v-if="!store.user" icon="mdi-cog-outline" title="登录后管理账户设置" description="修改昵称、头像、时区与登录密码。">
@@ -107,8 +110,8 @@ async function submitPassword() {
 
       <v-card color="surface" class="pa-5 d-flex align-center justify-space-between flex-wrap ga-3">
         <div>
-          <div class="text-subtitle-1 font-weight-bold">外观主题</div>
-          <div class="text-body-2 text-medium-emphasis">在浅色模式与深色模式之间即时切换</div>
+          <div class="text-title-medium font-weight-bold">外观主题</div>
+          <div class="text-body-medium text-medium-emphasis">在浅色模式与深色模式之间即时切换</div>
         </div>
         <v-btn
           variant="tonal"
@@ -121,7 +124,7 @@ async function submitPassword() {
       </v-card>
 
       <v-card color="surface" class="pa-5">
-        <div class="text-subtitle-1 font-weight-bold mb-4">基本资料与头像</div>
+        <div class="text-title-medium font-weight-bold mb-4">基本资料与头像</div>
         <AvatarEditorButton
           :name="store.user.name"
           :avatar="store.user.avatar"
@@ -157,7 +160,7 @@ async function submitPassword() {
       </v-card>
 
       <v-card color="surface" class="pa-5">
-        <div class="text-subtitle-1 font-weight-bold mb-4 d-flex align-center ga-2">
+        <div class="text-title-medium font-weight-bold mb-4 d-flex align-center ga-2">
           <v-icon icon="mdi-key-outline" color="primary" />
           修改密码
         </div>
@@ -178,5 +181,5 @@ async function submitPassword() {
         </v-form>
       </v-card>
     </div>
-  </v-container>
+  </div>
 </template>

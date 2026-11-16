@@ -221,8 +221,8 @@ async function testMod(id: string) {
     <v-card border class="pa-5">
       <div class="d-flex align-center justify-space-between ga-3 flex-wrap mb-4">
         <div>
-          <h3 class="text-subtitle-1 font-weight-bold">上游供应商（Suppliers）</h3>
-          <div class="text-body-2 text-medium-emphasis">管理协议兼容网关及加密凭据</div>
+          <h3 class="text-title-medium font-weight-bold">上游供应商（Suppliers）</h3>
+          <div class="text-body-medium text-medium-emphasis">管理协议兼容网关及加密凭据</div>
         </div>
         <v-btn color="primary" prepend-icon="mdi-plus" size="small" @click="openCreateSup">
           新增供应商
@@ -234,13 +234,13 @@ async function testMod(id: string) {
           <v-card color="surface-light" rounded="lg" class="pa-4 h-100 d-flex flex-column justify-space-between ga-3">
             <div>
               <div class="d-flex align-center ga-2 flex-wrap mb-2">
-                <span class="font-weight-bold text-body-1">{{ s.name }}</span>
+                <span class="font-weight-bold text-body-large">{{ s.name }}</span>
                 <v-chip size="x-small" color="secondary" variant="tonal">{{ s.protocol }}</v-chip>
                 <v-chip size="x-small" :color="s.active ? 'success' : 'default'" variant="tonal">
                   {{ s.active ? '启用' : '停用' }}
                 </v-chip>
               </div>
-              <div class="text-caption text-medium-emphasis" style="word-break:break-all">
+              <div class="text-body-small text-medium-emphasis" style="word-break:break-all">
                 {{ s.baseUrl }} · {{ s.hasKey ? '已加密存储 Key' : '无 Key' }}
               </div>
             </div>
@@ -253,15 +253,15 @@ async function testMod(id: string) {
           </v-card>
         </v-col>
       </v-row>
-      <div v-else class="text-body-2 text-medium-emphasis">暂无供应商，请先添加。</div>
+      <div v-else class="text-body-medium text-medium-emphasis">暂无供应商，请先添加。</div>
     </v-card>
 
     <!-- Models -->
     <v-card border class="pa-5">
       <div class="d-flex align-center justify-space-between ga-3 flex-wrap mb-4">
         <div>
-          <h3 class="text-subtitle-1 font-weight-bold">模型列表（Models）</h3>
-          <div class="text-body-2 text-medium-emphasis">绑定语言模型或向量模型及其上下文 / 思考预算参数</div>
+          <h3 class="text-title-medium font-weight-bold">模型列表（Models）</h3>
+          <div class="text-body-medium text-medium-emphasis">绑定语言模型或向量模型及其上下文 / 思考预算参数</div>
         </div>
         <v-btn color="primary" prepend-icon="mdi-plus" size="small" :disabled="!suppliers.length" @click="openCreateMod">
           新增模型
@@ -273,13 +273,13 @@ async function testMod(id: string) {
           <v-card color="surface-light" rounded="lg" class="pa-4 h-100 d-flex flex-column justify-space-between ga-3">
             <div>
               <div class="d-flex align-center ga-2 flex-wrap mb-2">
-                <span class="font-weight-bold text-body-1">{{ m.name }}</span>
+                <span class="font-weight-bold text-body-large">{{ m.name }}</span>
                 <v-chip size="x-small" color="primary" variant="tonal">{{ m.kind === 'embedding' ? '向量' : '语言' }}</v-chip>
                 <v-chip size="x-small" :color="m.active && m.supplierActive ? 'success' : 'default'" variant="tonal">
                   {{ m.active && m.supplierActive ? '可用' : '停用' }}
                 </v-chip>
               </div>
-              <div class="text-caption text-medium-emphasis d-flex flex-column ga-1">
+              <div class="text-body-small text-medium-emphasis d-flex flex-column ga-1">
                 <div>供应商：{{ m.supplierName }} ({{ m.protocol }})</div>
                 <div>模型 ID：<code class="font-mono">{{ m.model }}</code> · 窗口 {{ m.contextWindow }} / 输出 {{ m.maxOutput }}</div>
                 <div>能力：{{ m.capabilities.join(', ') || 'text' }} · 思考：{{ m.reasoningEffort }}</div>
@@ -304,7 +304,7 @@ async function testMod(id: string) {
           </v-card>
         </v-col>
       </v-row>
-      <div v-else class="text-body-2 text-medium-emphasis">暂无模型配置。</div>
+      <div v-else class="text-body-medium text-medium-emphasis">暂无模型配置。</div>
     </v-card>
 
     <!-- Supplier Dialog -->
@@ -361,7 +361,7 @@ async function testMod(id: string) {
             </v-row>
 
             <div v-if="modForm.kind === 'language'" class="d-flex align-center ga-3 flex-wrap">
-              <span class="text-body-2 font-weight-medium">支持能力：</span>
+              <span class="text-body-medium font-weight-medium">支持能力：</span>
               <v-checkbox
                 v-for="c in capabilityOptions"
                 :key="c"

@@ -163,28 +163,38 @@ async function runRecallPreview() {
 </script>
 
 <template>
-  <v-container fluid class="pa-5 pa-md-8" style="max-width:1180px">
-    <div class="d-flex align-end justify-space-between flex-wrap ga-4 mb-5">
+  <div class="cp-page" style="max-width:1180px">
+    <header class="cp-page-header">
       <div>
-        <h1 class="text-h5 text-sm-h4 font-weight-bold">长期记忆</h1>
+        <h1 class="cp-page-title">长期记忆</h1>
+        <p class="cp-page-subtitle">角色会记住与你相关的事实、偏好与约定，并在对话中自然想起。</p>
       </div>
-      <div v-if="store.user" class="d-flex flex-wrap ga-2">
-        <v-btn variant="tonal" size="small" prepend-icon="mdi-auto-fix" :loading="actionBusy" @click="runSummarize">
-          AI 立即整理记忆
-        </v-btn>
-        <v-btn variant="outlined" size="small" prepend-icon="mdi-refresh" :disabled="actionBusy" @click="runReindex">
-          同步向量索引
+      <div v-if="store.user" class="d-flex align-center ga-2">
+        <v-btn variant="tonal" height="36" prepend-icon="mdi-auto-fix" :loading="actionBusy" @click="runSummarize">
+          AI 整理
+          <v-tooltip activator="parent" location="bottom">让 AI 立即从近期对话中整理记忆</v-tooltip>
         </v-btn>
         <v-btn
           color="primary"
-          size="small"
+          variant="flat"
+          height="36"
           prepend-icon="mdi-plus"
           @click="createForm.characterId = filterCharId !== 'all' ? filterCharId : (store.characters[0]?.id ?? ''); createOpen = true"
         >
           手写记忆
         </v-btn>
+        <v-menu location="bottom end">
+          <template #activator="{ props: menuProps }">
+            <v-btn v-bind="menuProps" variant="text" height="36" width="36" min-width="36" aria-label="更多操作" :disabled="actionBusy">
+              <v-icon icon="mdi-dots-horizontal" size="20" />
+            </v-btn>
+          </template>
+          <v-list density="compact" min-width="180">
+            <v-list-item prepend-icon="mdi-refresh" title="同步向量索引" @click="runReindex" />
+          </v-list>
+        </v-menu>
       </div>
-    </div>
+    </header>
 
     <EmptyState v-if="!store.user" icon="mdi-brain" title="登录后查看长期记忆" description="每个角色为你保留独立的认知档案，结合 FTS5 与语义向量自动召回。">
       <template #action>
@@ -223,7 +233,7 @@ async function runRecallPreview() {
           <v-col cols="12" sm="6" md="3">
             <v-text-field
               v-model="search"
-              placeholder="关键词检索..."
+              placeholder="搜索记忆内容…"
               prepend-inner-icon="mdi-magnify"
               density="compact"
               @keydown.enter="loadMemories"
@@ -247,9 +257,9 @@ async function runRecallPreview() {
               <template #prepend>
                 <v-chip size="x-small" color="primary" class="mr-2">{{ kindLabels[r.kind] }}</v-chip>
               </template>
-              <v-list-item-title class="text-body-2">{{ r.content }}</v-list-item-title>
+              <v-list-item-title class="text-body-medium">{{ r.content }}</v-list-item-title>
               <template #append>
-                <span class="text-caption text-medium-emphasis">
+                <span class="text-body-small text-medium-emphasis">
                   相关度 {{ r.relevance.toFixed(2) }} · {{ r.routes.join('+') }}
                 </span>
               </template>
@@ -270,7 +280,7 @@ async function runRecallPreview() {
                 :size="28"
                 rounded="lg"
               />
-              <strong class="text-body-2">{{ m.characterName || '角色' }}</strong>
+              <strong class="text-body-medium">{{ m.characterName || '角色' }}</strong>
               <v-chip size="x-small" color="secondary" variant="tonal">{{ kindLabels[m.kind] }}</v-chip>
               <v-chip size="x-small" :color="m.source === 'manual' ? 'primary' : 'default'" variant="tonal">
                 {{ m.source === 'manual' ? '手写' : '自动' }}
@@ -278,13 +288,13 @@ async function runRecallPreview() {
               <v-chip v-if="m.status === 'archived'" size="x-small" color="warning" variant="tonal">已归档</v-chip>
             </div>
 
-            <div class="text-body-2 flex-grow-1" style="line-height:1.65">{{ m.content }}</div>
+            <div class="text-body-medium flex-grow-1" style="line-height:1.65">{{ m.content }}</div>
 
             <div v-if="m.tags.length" class="d-flex flex-wrap ga-1">
               <v-chip v-for="t in m.tags" :key="t" size="x-small">#{{ t }}</v-chip>
             </div>
 
-            <div class="d-flex align-center justify-space-between text-caption text-medium-emphasis">
+            <div class="d-flex align-center justify-space-between text-body-small text-medium-emphasis">
               <span>重要度 {{ Math.round(m.importance * 100) }}% · 召回 {{ m.accessCount }} 次 · {{ formatRelativeTime(m.updatedAt) }}</span>
               <div>
                 <v-btn icon="mdi-archive-outline" variant="text" size="x-small" :title="m.status === 'active' ? '归档' : '恢复'" @click="toggleArchive(m)" />
@@ -306,7 +316,7 @@ async function runRecallPreview() {
     <v-dialog v-model="createOpen" max-width="520">
       <v-card color="surface" class="pa-6">
         <div class="d-flex align-center justify-space-between mb-4">
-          <h3 class="text-h6 font-weight-bold">添加手写长期记忆</h3>
+          <h3 class="text-title-large font-weight-bold">添加手写长期记忆</h3>
           <v-btn icon="mdi-close" variant="text" size="small" @click="createOpen = false" />
         </div>
         <v-form class="d-flex flex-column ga-3" @submit.prevent="submitCreate">
@@ -327,7 +337,7 @@ async function runRecallPreview() {
               />
             </v-col>
             <v-col cols="6">
-              <div class="text-caption text-medium-emphasis">重要度：{{ Math.round(createForm.importance * 100) }}%</div>
+              <div class="text-body-small text-medium-emphasis">重要度：{{ Math.round(createForm.importance * 100) }}%</div>
               <v-slider v-model="createForm.importance" :min="0.2" :max="1" :step="0.05" />
             </v-col>
           </v-row>
@@ -340,5 +350,5 @@ async function runRecallPreview() {
         </v-form>
       </v-card>
     </v-dialog>
-  </v-container>
+  </div>
 </template>
