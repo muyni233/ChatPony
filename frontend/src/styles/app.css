@@ -1,0 +1,41 @@
+:root {
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", ui-monospace, SFMono-Regular, monospace;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
+}
+
+body {
+  font-family: var(--font-sans);
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+.cp-action-text {
+  font-style: italic;
+  color: rgb(var(--v-theme-tertiary));
+  background: rgba(var(--v-theme-tertiary), 0.09);
+  padding: 1px 6px;
+  border-radius: 6px;
+}
+
+.cp-code-pre {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgb(var(--v-theme-surface-light));
+  font-family: var(--font-mono);
+  font-size: 12px;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}

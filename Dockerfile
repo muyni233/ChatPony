@@ -1,33 +1,46 @@
-FROM oven/bun:1.3.14 AS base
-WORKDIR /app
-ENV NEXT_TELEMETRY_DISABLED=1
-
-FROM base AS dependencies
-COPY package.json bun.lock ./
+# Stage 1: Build Vue 3 + Vite static bundle
+FROM oven/bun:1-alpine AS frontend
+WORKDIR /app/frontend
+COPY frontend/package.json frontend/bun.lock ./
 RUN bun install --frozen-lockfile
-
-FROM dependencies AS build
-COPY . .
+COPY frontend/ ./
 RUN bun run build
 
-FROM base AS production-dependencies
-COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile --production
+# Stage 2: Build Rust backend & CLI binaries
+FROM rust:slim-bookworm AS backend
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config libssl-dev ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+WORKDIR /app/backend
+COPY backend/Cargo.toml backend/Cargo.lock ./
+# Cache dependencies before copying source
+RUN mkdir -p src/bin \
+  && echo 'fn main() {}' > src/main.rs \
+  && echo 'fn main() {}' > src/bin/create_admin.rs \
+  && echo 'fn main() {}' > src/bin/backup.rs \
+  && cargo build --release \
+  && rm -rf src
+COPY backend/ ./
+RUN touch src/main.rs src/lib.rs && cargo build --release --bins
 
-FROM base AS runtime
-ENV NODE_ENV=production \
-    DATABASE_PATH=/app/data/chatpony.db \
+# Stage 3: Minimal Debian runtime
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates libssl3 tzdata wget \
+  && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+RUN mkdir -p /app/data /app/static
+COPY --from=backend /app/backend/target/release/chatpony /usr/local/bin/chatpony
+COPY --from=backend /app/backend/target/release/create-admin /usr/local/bin/create-admin
+COPY --from=backend /app/backend/target/release/backup /usr/local/bin/backup
+COPY --from=frontend /app/frontend/dist /app/static
+
+ENV HOST=0.0.0.0 \
     PORT=3000 \
-    HOSTNAME=0.0.0.0
-COPY --from=production-dependencies --chown=bun:bun /app/node_modules ./node_modules
-COPY --from=build --chown=bun:bun /app/.next ./.next
-COPY --from=build --chown=bun:bun /app/public ./public
-COPY --from=build --chown=bun:bun /app/package.json /app/bun.lock /app/next.config.ts /app/tsconfig.json ./
-COPY --from=build --chown=bun:bun /app/src/lib ./src/lib
-COPY --from=build --chown=bun:bun /app/scripts ./scripts
-RUN mkdir -p /app/data /app/.next/cache && chown -R bun:bun /app/data /app/.next/cache
-USER bun
+    DATABASE_PATH=/app/data/chatpony.db \
+    CHATPONY_STATIC_DIR=/app/static \
+    RUST_LOG=info
+
 EXPOSE 3000
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD bun -e "const response = await fetch('http://127.0.0.1:3000/api/bootstrap'); process.exit(response.ok ? 0 : 1)"
-CMD ["bun", "--bun", "next", "start", "--hostname", "0.0.0.0", "--port", "3000"]
+VOLUME ["/app/data"]
+CMD ["chatpony"]
