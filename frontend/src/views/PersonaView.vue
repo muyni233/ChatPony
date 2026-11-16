@@ -64,7 +64,7 @@ async function save() {
       </template>
     </EmptyState>
 
-    <v-card v-else color="surface" class="pa-6">
+    <v-card v-else class="pa-6">
       <v-form class="d-flex flex-column ga-4" @submit.prevent="save">
         <v-sheet color="surface-light" rounded="lg" class="pa-4 d-flex align-center justify-space-between ga-4">
           <div>

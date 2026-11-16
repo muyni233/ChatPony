@@ -30,28 +30,27 @@ defineProps<{
 .cp-empty {
   padding: 48px 24px;
   text-align: center;
-  border: 1px dashed rgba(var(--v-border-color), 0.16);
-  border-radius: var(--cp-radius-lg);
-  background: rgba(var(--v-theme-surface), 0.6);
+  border-radius: var(--cp-radius-md);
+  background: rgb(var(--v-theme-surface-container-low));
 }
 .cp-empty__icon {
   width: 56px;
   height: 56px;
-  border-radius: 18px;
+  border-radius: var(--cp-radius-lg);
   display: grid;
   place-items: center;
-  color: rgb(var(--v-theme-primary));
-  background: rgba(var(--v-theme-primary), 0.1);
+  color: rgb(var(--v-theme-on-secondary-container));
+  background: rgb(var(--v-theme-secondary-container));
   margin-bottom: 4px;
 }
 .cp-empty__title {
-  font-size: 1.0625rem;
-  font-weight: 700;
+  font-size: 1.125rem;
+  font-weight: 500;
 }
 .cp-empty__desc {
   max-width: 420px;
   font-size: 0.875rem;
   line-height: 1.6;
-  color: rgba(var(--v-theme-on-surface), 0.6);
+  color: rgb(var(--v-theme-on-surface-variant));
 }
 </style>

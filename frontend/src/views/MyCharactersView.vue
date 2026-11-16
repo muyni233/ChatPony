@@ -185,7 +185,7 @@ async function startChat(charId: string) {
 
     <v-row v-else-if="data?.items.length">
       <v-col v-for="ch in data.items" :key="ch.id" cols="12" md="6" lg="4">
-        <v-card color="surface" class="pa-5 fill-height d-flex flex-column ga-3">
+        <v-card class="pa-5 fill-height d-flex flex-column ga-3">
           <div class="d-flex align-center ga-3">
             <AvatarEditorButton
               compact
@@ -236,7 +236,7 @@ async function startChat(charId: string) {
     </EmptyState>
 
     <v-dialog v-model="modalOpen" max-width="720">
-      <v-card color="surface" class="pa-6">
+      <v-card class="pa-6">
         <div class="d-flex align-center justify-space-between mb-4">
           <h3 class="text-title-large font-weight-bold">{{ editingId ? '编辑自设角色' : '新建自设角色' }}</h3>
           <v-btn icon="mdi-close" variant="text" size="small" @click="modalOpen = false" />

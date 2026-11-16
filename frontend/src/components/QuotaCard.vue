@@ -29,7 +29,7 @@ function tone(w: QuotaWindow): string {
     <div
       v-for="row in [
         { key: '5h', label: '5 小时', w: quota.fiveHour, color: 'primary' },
-        { key: '7d', label: '7 天', w: quota.sevenDay, color: 'secondary' },
+        { key: '7d', label: '7 天', w: quota.sevenDay, color: 'tertiary' },
       ]"
       :key="row.key"
       class="cp-quota-mini__row"
@@ -57,7 +57,7 @@ function tone(w: QuotaWindow): string {
       <div
         v-for="row in [
           { key: '5h', label: '5 小时窗口', w: quota.fiveHour, color: 'primary' },
-          { key: '7d', label: '7 天窗口', w: quota.sevenDay, color: 'secondary' },
+          { key: '7d', label: '7 天窗口', w: quota.sevenDay, color: 'tertiary' },
         ]"
         :key="row.key"
         class="cp-quota-cell"
@@ -84,7 +84,7 @@ function tone(w: QuotaWindow): string {
   height: var(--h, 4px);
   border-radius: 999px;
   overflow: hidden;
-  background: rgba(var(--v-theme-on-surface), 0.08);
+  background: rgb(var(--v-theme-secondary-container));
 }
 .cp-meter__fill {
   position: absolute;
@@ -98,11 +98,12 @@ function tone(w: QuotaWindow): string {
   gap: 10px;
   padding: 12px 14px;
   border-radius: var(--cp-radius-md);
-  background: rgba(var(--v-theme-on-surface), 0.035);
+  background: rgb(var(--v-theme-surface-container));
 }
 .cp-quota-mini__label {
   font-size: 0.75rem;
-  color: rgba(var(--v-theme-on-surface), 0.6);
+  font-weight: 500;
+  color: rgb(var(--v-theme-on-surface-variant));
 }
 .cp-quota-mini__value {
   font-size: 0.75rem;
@@ -116,12 +117,12 @@ function tone(w: QuotaWindow): string {
 .cp-quota-cell {
   padding: 16px 18px;
   border-radius: var(--cp-radius-md);
-  background: rgba(var(--v-theme-on-surface), 0.035);
+  background: rgb(var(--v-theme-surface-container));
 }
 .cp-quota-big {
-  font-size: 1.125rem;
-  font-weight: 700;
+  font-size: 1.375rem;
+  line-height: 1.75rem;
+  font-weight: 400;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.01em;
 }
 </style>

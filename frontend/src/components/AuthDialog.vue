@@ -116,7 +116,7 @@ async function handleSubmit() {
 
 <template>
   <v-dialog v-model="open" max-width="480">
-    <v-card class="pa-6" color="surface">
+    <v-card class="pa-6">
       <div class="d-flex align-start justify-space-between mb-4">
         <div>
           <img src="/icon.svg" alt="ChatPony" width="40" height="40" class="mb-4" style="display:block;border-radius:10px" />

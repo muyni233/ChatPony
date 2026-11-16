@@ -78,7 +78,7 @@ async function handleCreate() {
 
 <template>
   <v-dialog v-model="open" max-width="760">
-    <v-card class="pa-6" color="surface">
+    <v-card class="pa-6">
       <div class="d-flex align-start justify-space-between mb-4">
         <div>
           <h3 class="text-headline-small font-weight-bold">发起新对话</h3>

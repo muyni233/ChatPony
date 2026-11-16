@@ -69,13 +69,13 @@ async function quickStartChat(characterId: string) {
           <v-btn
             color="primary"
             variant="flat"
-            height="42"
+            height="40"
             prepend-icon="mdi-plus"
             @click="store.user ? store.openNewChat() : store.openAuth('login')"
           >
             {{ store.user ? '发起新对话' : '登录开始' }}
           </v-btn>
-          <v-btn variant="outlined" height="42" to="/characters" class="cp-btn-ghost">浏览角色</v-btn>
+          <v-btn variant="outlined" height="40" to="/characters" class="cp-btn-ghost">浏览角色</v-btn>
         </div>
       </div>
 
@@ -109,7 +109,6 @@ async function quickStartChat(characterId: string) {
           v-for="conv in recentConversations"
           :key="conv.id"
           :to="`/chat/${conv.id}`"
-          color="surface"
           class="cp-conv-card"
         >
           <div class="d-flex align-center ga-3 mb-3">
@@ -238,6 +237,7 @@ async function quickStartChat(characterId: string) {
 </template>
 
 <style scoped>
+/* M3: hero as a primary-container surface, extra-large corners */
 .cp-hero {
   position: relative;
   display: flex;
@@ -245,29 +245,53 @@ async function quickStartChat(characterId: string) {
   align-items: flex-end;
   justify-content: space-between;
   gap: 28px;
-  padding: 36px 32px;
+  padding: 40px 36px 36px;
   margin-bottom: 40px;
-  border-radius: 24px;
+  border-radius: var(--cp-radius-xl);
   overflow: hidden;
-  background:
-    radial-gradient(120% 140% at 100% 0%, rgba(var(--v-theme-primary), 0.14) 0%, transparent 55%),
-    radial-gradient(90% 120% at 0% 100%, rgba(var(--v-theme-tertiary), 0.1) 0%, transparent 60%),
-    rgb(var(--v-theme-surface));
-  border: 1px solid var(--cp-hairline);
+  color: rgb(var(--v-theme-on-primary-container));
+  background: rgb(var(--v-theme-primary-container));
+}
+.cp-hero::before {
+  /* soft organic shape, M3 expressive */
+  content: '';
+  position: absolute;
+  right: -80px;
+  top: -120px;
+  width: 360px;
+  height: 360px;
+  border-radius: 42% 58% 63% 37% / 45% 40% 60% 55%;
+  background: rgba(var(--v-theme-primary), 0.12);
+  pointer-events: none;
+}
+.cp-hero > * {
+  position: relative;
+}
+.cp-hero .cp-eyebrow {
+  color: rgb(var(--v-theme-on-primary-container));
+  text-transform: none;
+  letter-spacing: 0.00625em;
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+.cp-hero .cp-page-subtitle {
+  color: rgba(var(--v-theme-on-primary-container), 0.8);
 }
 .cp-hero__text {
   max-width: 560px;
 }
+/* M3 headline-large → display-small */
 .cp-hero__title {
-  font-size: 1.625rem;
-  line-height: 1.25;
-  font-weight: 800;
-  letter-spacing: -0.025em;
+  font-size: 1.75rem;
+  line-height: 2.25rem;
+  font-weight: 500;
+  letter-spacing: 0;
   margin: 0;
 }
 @media (min-width: 600px) {
   .cp-hero__title {
-    font-size: 2.125rem;
+    font-size: 2.25rem;
+    line-height: 2.75rem;
   }
 }
 .cp-hero__stats {
@@ -275,28 +299,26 @@ async function quickStartChat(characterId: string) {
   gap: 8px;
 }
 .cp-stat {
-  min-width: 92px;
+  min-width: 96px;
   padding: 14px 16px;
-  border-radius: 16px;
-  background: rgba(var(--v-theme-surface), 0.7);
-  border: 1px solid var(--cp-hairline);
-  backdrop-filter: blur(8px);
+  border-radius: var(--cp-radius-lg);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.6);
 }
 .cp-stat__num {
-  font-size: 1.5rem;
-  font-weight: 800;
-  letter-spacing: -0.02em;
+  font-size: 1.75rem;
+  font-weight: 400;
+  line-height: 2.25rem;
   font-variant-numeric: tabular-nums;
-  line-height: 1.1;
 }
 .cp-stat__label {
   font-size: 0.75rem;
-  color: rgba(var(--v-theme-on-surface), 0.55);
-  margin-top: 2px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  color: rgba(var(--v-theme-on-primary-container), 0.75);
 }
 @media (max-width: 599px) {
   .cp-hero {
-    padding: 26px 20px;
+    padding: 28px 22px 24px;
   }
   .cp-hero__stats {
     width: 100%;
@@ -308,8 +330,8 @@ async function quickStartChat(characterId: string) {
 }
 
 .cp-btn-ghost {
-  border-color: var(--cp-hairline) !important;
-  background: rgb(var(--v-theme-surface));
+  border-color: rgb(var(--v-theme-on-primary-container)) !important;
+  color: rgb(var(--v-theme-on-primary-container)) !important;
 }
 
 .cp-conv-card {
@@ -318,7 +340,7 @@ async function quickStartChat(characterId: string) {
 .cp-conv-card__preview {
   font-size: 0.875rem;
   line-height: 1.6;
-  color: rgba(var(--v-theme-on-surface), 0.62);
+  color: rgb(var(--v-theme-on-surface-variant));
   min-height: 2.8em;
 }
 .cp-home-bottom {
@@ -338,7 +360,7 @@ async function quickStartChat(characterId: string) {
   padding: 16px 20px;
 }
 .cp-ann + .cp-ann {
-  border-top: 1px solid var(--cp-hairline);
+  border-top: 1px solid rgb(var(--v-theme-outline-variant));
 }
 .cp-pin {
   display: inline-flex;
@@ -347,9 +369,9 @@ async function quickStartChat(characterId: string) {
   font-size: 0.6875rem;
   font-weight: 700;
   padding: 2px 6px;
-  border-radius: 6px;
-  color: rgb(var(--v-theme-tertiary));
-  background: rgba(var(--v-theme-tertiary), 0.1);
+  border-radius: var(--cp-radius-sm);
+  color: rgb(var(--v-theme-on-tertiary-container));
+  background: rgb(var(--v-theme-tertiary-container));
   flex-shrink: 0;
 }
 </style>

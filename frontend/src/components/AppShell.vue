@@ -70,7 +70,7 @@ function closeIfMobile() {
       :permanent="mdAndUp"
       :temporary="!mdAndUp"
       width="264"
-      color="surface-light"
+      color="surface-container-low"
       border="0"
       class="cp-sidebar"
     >
@@ -95,9 +95,9 @@ function closeIfMobile() {
           </v-btn>
         </div>
 
-        <div class="px-3 pb-2">
-          <button type="button" class="cp-new-chat" @click="store.openNewChat(); closeIfMobile()">
-            <v-icon icon="mdi-plus" size="18" />
+        <div class="px-3 pt-1 pb-3">
+          <button type="button" class="cp-fab" @click="store.openNewChat(); closeIfMobile()">
+            <v-icon icon="mdi-pencil-outline" size="22" />
             <span>发起新对话</span>
           </button>
         </div>
@@ -119,7 +119,7 @@ function closeIfMobile() {
                 :class="{ 'is-active': item.to === '/' ? isExactActive : isActive }"
                 @click="navigate($event); closeIfMobile()"
               >
-                <v-icon :icon="item.icon" size="18" />
+                <v-icon :icon="item.icon" size="22" />
                 <span>{{ item.label }}</span>
               </a>
             </router-link>
@@ -171,7 +171,7 @@ function closeIfMobile() {
                 <v-icon icon="mdi-unfold-more-horizontal" size="18" class="cp-faint" />
               </button>
             </template>
-            <v-list density="compact" min-width="220" class="cp-menu" bg-color="surface">
+            <v-list density="compact" min-width="220" class="cp-menu">
               <v-list-item to="/settings" prepend-icon="mdi-cog-outline" title="账号设置" @click="closeIfMobile" />
               <v-list-item to="/persona" prepend-icon="mdi-card-account-details-outline" title="个人设定" @click="closeIfMobile" />
               <v-divider class="my-1" />
@@ -195,7 +195,7 @@ function closeIfMobile() {
     </v-navigation-drawer>
 
     <!-- Mobile App Bar -->
-    <v-app-bar v-if="!mdAndUp && !isChatRoute" color="surface" flat density="comfortable" class="cp-appbar">
+    <v-app-bar v-if="!mdAndUp && !isChatRoute" color="background" flat density="comfortable" class="cp-appbar">
       <v-app-bar-nav-icon aria-label="打开导航菜单" @click="drawer = !drawer" />
       <v-app-bar-title>
         <span class="cp-brand__inline">
@@ -220,9 +220,9 @@ function closeIfMobile() {
     <v-bottom-navigation
       v-if="!mdAndUp && !isChatRoute"
       grow
-      color="primary"
-      bg-color="surface"
-      height="62"
+      color="on-secondary-container"
+      bg-color="surface-container"
+      height="80"
       class="cp-bottomnav"
     >
       <v-btn to="/" exact value="home">
@@ -268,198 +268,254 @@ function closeIfMobile() {
 </template>
 
 <style scoped>
+/* ---- M3 navigation drawer (standard) ---- */
 .cp-sidebar {
-  border-right: 1px solid var(--cp-hairline) !important;
+  border: 0 !important;
 }
 
 .cp-brand {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 18px 14px 14px 18px;
+  padding: 18px 12px 12px 20px;
 }
 .cp-brand__link {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   text-decoration: none;
   color: inherit;
 }
 .cp-brand__mark {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   flex: none;
   display: block;
   border-radius: 8px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 4px 10px -6px rgba(36, 92, 80, 0.6);
 }
 .cp-brand__mark--sm {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
 }
 .cp-brand__inline {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
+/* M3 title-large */
 .cp-brand__name {
-  font-weight: 800;
-  font-size: 1.0625rem;
-  letter-spacing: -0.02em;
+  font-weight: 500;
+  font-size: 1.375rem;
+  line-height: 1.75rem;
+  letter-spacing: 0;
 }
 .cp-icon-btn {
-  color: rgba(var(--v-theme-on-surface), 0.6);
+  color: rgb(var(--v-theme-on-surface-variant));
 }
 
-.cp-new-chat {
-  width: 100%;
-  height: 40px;
-  display: flex;
+/* M3 extended FAB: primary container, 16dp corners, elevation 3 */
+.cp-fab {
+  position: relative;
+  height: 56px;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 12px;
-  border-radius: 12px;
+  gap: 12px;
+  padding: 0 20px 0 16px;
+  border: 0;
+  border-radius: 16px;
   font-size: 0.875rem;
-  font-weight: 600;
-  color: rgb(var(--v-theme-on-surface));
-  background: rgb(var(--v-theme-surface));
-  border: 1px solid var(--cp-hairline);
-  box-shadow: var(--cp-shadow-sm);
+  font-weight: 500;
+  letter-spacing: 0.00625em;
+  color: rgb(var(--v-theme-on-primary-container));
+  background: rgb(var(--v-theme-primary-container));
+  box-shadow: var(--cp-shadow-lg);
   cursor: pointer;
-  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+  overflow: hidden;
+  transition: box-shadow 0.2s var(--cp-ease-std);
 }
-.cp-new-chat .v-icon {
-  color: rgb(var(--v-theme-primary));
+.cp-fab::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity 0.15s var(--cp-ease-std);
 }
-.cp-new-chat:hover {
-  border-color: rgba(var(--v-theme-primary), 0.35);
-  box-shadow: var(--cp-shadow-md);
+.cp-fab:hover {
+  box-shadow: 0 6px 10px 4px rgba(0, 0, 0, 0.15), 0 2px 3px rgba(0, 0, 0, 0.3);
 }
-.cp-new-chat:active {
-  transform: scale(0.99);
+.cp-fab:hover::after {
+  opacity: 0.08;
+}
+.cp-fab:active::after {
+  opacity: 0.12;
 }
 
 .cp-sidebar__scroll {
   flex: 1;
   overflow-y: auto;
-  padding: 4px 10px 12px;
+  padding: 0 12px 12px;
 }
 .cp-nav-group {
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  margin-top: 14px;
 }
+.cp-nav-group + .cp-nav-group {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgb(var(--v-theme-outline-variant));
+}
+/* M3 drawer section header: title-small, on-surface-variant */
 .cp-nav-label {
-  font-size: 0.6875rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  color: rgba(var(--v-theme-on-surface), 0.42);
-  padding: 0 10px 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: 0.00625em;
+  line-height: 1.25rem;
+  color: rgb(var(--v-theme-on-surface-variant));
+  padding: 10px 16px 8px;
 }
+/* M3 drawer item: full-rounded active indicator, state layers */
 .cp-nav-item {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
-  height: 36px;
-  padding: 0 10px;
-  border-radius: 10px;
+  gap: 12px;
+  height: 48px;
+  padding: 0 24px 0 16px;
+  border-radius: 999px;
   font-size: 0.875rem;
   font-weight: 500;
-  color: rgba(var(--v-theme-on-surface), 0.72);
+  letter-spacing: 0.00625em;
+  color: rgb(var(--v-theme-on-surface-variant));
   text-decoration: none;
-  transition: background 0.15s, color 0.15s;
+  overflow: hidden;
+  transition: background-color 0.2s var(--cp-ease-std), color 0.2s var(--cp-ease-std);
 }
-.cp-nav-item .v-icon {
-  opacity: 0.75;
+.cp-nav-item::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgb(var(--v-theme-on-surface));
+  opacity: 0;
+  transition: opacity 0.15s var(--cp-ease-std);
+  pointer-events: none;
 }
-.cp-nav-item:hover {
-  background: rgba(var(--v-theme-on-surface), 0.05);
-  color: rgb(var(--v-theme-on-surface));
+.cp-nav-item:hover::after {
+  opacity: 0.08;
+}
+.cp-nav-item:active::after {
+  opacity: 0.12;
 }
 .cp-nav-item.is-active {
-  background: rgb(var(--v-theme-surface));
-  color: rgb(var(--v-theme-on-surface));
+  background: rgb(var(--v-theme-secondary-container));
+  color: rgb(var(--v-theme-on-secondary-container));
   font-weight: 600;
-  box-shadow: var(--cp-shadow-sm), 0 0 0 1px var(--cp-hairline);
 }
-.cp-nav-item.is-active .v-icon {
-  opacity: 1;
-  color: rgb(var(--v-theme-primary));
+.cp-nav-item.is-active::after {
+  background: rgb(var(--v-theme-on-secondary-container));
 }
 .cp-nav-item--recent {
-  font-size: 0.8125rem;
-  height: 34px;
+  height: 40px;
 }
 .cp-recent-dots {
   display: inline-flex;
-  width: 18px;
+  width: 22px;
   flex-shrink: 0;
   justify-content: center;
-}
-.cp-recent-dots {
   gap: 2px;
 }
 .cp-recent-dot {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
 }
 
 .cp-sidebar__footer {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px 12px 14px;
-  border-top: 1px solid var(--cp-hairline);
+  gap: 4px;
+  padding: 8px 12px 12px;
 }
 .cp-account {
+  position: relative;
   border: 0;
   background: transparent;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
-  padding: 8px;
-  border-radius: 12px;
+  height: 56px;
+  padding: 0 12px 0 10px;
+  border-radius: 999px;
   color: inherit;
   cursor: pointer;
-  transition: background 0.15s;
+  overflow: hidden;
 }
-.cp-account:hover {
-  background: rgba(var(--v-theme-on-surface), 0.05);
+.cp-account::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgb(var(--v-theme-on-surface));
+  opacity: 0;
+  transition: opacity 0.15s var(--cp-ease-std);
+}
+.cp-account:hover::after {
+  opacity: 0.08;
 }
 .cp-account__name {
   display: block;
   font-size: 0.875rem;
-  font-weight: 600;
-  line-height: 1.3;
+  font-weight: 500;
+  line-height: 1.25rem;
 }
 .cp-account__meta {
   display: block;
   font-size: 0.75rem;
-  color: rgba(var(--v-theme-on-surface), 0.55);
-  line-height: 1.3;
+  color: rgb(var(--v-theme-on-surface-variant));
+  line-height: 1rem;
 }
+/* M3 menu: surface-container, extra-small corners, elevation 2 */
 .cp-menu {
-  border: 1px solid var(--cp-hairline);
-  border-radius: 12px !important;
-  box-shadow: var(--cp-shadow-lg) !important;
-  padding: 4px;
+  background: rgb(var(--v-theme-surface-container)) !important;
+  border-radius: 4px !important;
+  box-shadow: var(--cp-shadow-md) !important;
+  padding: 8px 0;
 }
 
-.cp-appbar {
-  border-bottom: 1px solid var(--cp-hairline);
-}
+/* ---- M3 navigation bar (mobile) ---- */
 .cp-bottomnav {
-  border-top: 1px solid var(--cp-hairline);
   box-shadow: none !important;
 }
 .cp-bottomnav :deep(.v-btn) {
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  color: rgb(var(--v-theme-on-surface-variant));
+}
+.cp-bottomnav :deep(.v-btn .v-btn__overlay),
+.cp-bottomnav :deep(.v-btn .v-btn__underlay) {
+  display: none;
+}
+.cp-bottomnav :deep(.v-btn__content) {
+  gap: 4px;
+}
+.cp-bottomnav :deep(.v-btn__content > .v-icon) {
+  width: 64px;
+  height: 32px;
+  border-radius: 16px;
+  margin: 0;
+  transition: background-color 0.2s var(--cp-ease-std);
+}
+.cp-bottomnav :deep(.v-btn:hover .v-btn__content > .v-icon) {
+  background: rgba(var(--v-theme-on-surface), 0.08);
+}
+.cp-bottomnav :deep(.v-btn--active) {
+  color: rgb(var(--v-theme-on-surface));
+  font-weight: 700;
+}
+.cp-bottomnav :deep(.v-btn--active .v-btn__content > .v-icon) {
+  background: rgb(var(--v-theme-secondary-container));
+  color: rgb(var(--v-theme-on-secondary-container));
 }
 </style>

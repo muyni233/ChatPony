@@ -50,7 +50,7 @@ const store = useAppStore();
   align-items: center;
   gap: 10px;
   font-size: 0.75rem;
-  color: rgba(var(--v-theme-on-surface), 0.5);
+  color: rgb(var(--v-theme-on-surface-variant));
   font-variant-numeric: tabular-nums;
   margin-bottom: 6px;
 }
@@ -63,16 +63,16 @@ const store = useAppStore();
 }
 .cp-ann__title {
   margin: 0 0 8px;
-  font-size: 1.125rem;
-  font-weight: 700;
-  line-height: 1.4;
-  letter-spacing: -0.01em;
+  font-size: 1.375rem;
+  font-weight: 400;
+  line-height: 1.75rem;
+  letter-spacing: 0;
 }
 .cp-ann__body {
   font-size: 0.9375rem;
   line-height: 1.75;
   white-space: pre-wrap;
-  color: rgba(var(--v-theme-on-surface), 0.78);
+  color: rgb(var(--v-theme-on-surface));
 }
 @media (max-width: 599px) {
   .cp-ann { padding: 18px; }

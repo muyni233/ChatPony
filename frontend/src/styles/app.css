@@ -11,22 +11,26 @@
   --v-font-body: var(--font-sans);
   --v-font-heading: var(--font-sans);
 
-  --cp-radius-sm: 10px;
-  --cp-radius-md: 14px;
-  --cp-radius-lg: 20px;
-  --cp-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  /* M3 shape scale */
+  --cp-radius-xs: 4px;
+  --cp-radius-sm: 8px;
+  --cp-radius-md: 12px;
+  --cp-radius-lg: 16px;
+  --cp-radius-xl: 28px;
+  /* M3 motion: emphasized decelerate / standard */
+  --cp-ease: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --cp-ease-std: cubic-bezier(0.2, 0, 0, 1);
 
-  --cp-hairline: rgba(var(--v-border-color), var(--v-border-opacity));
-  --cp-shadow-sm: 0 1px 2px rgba(31, 29, 26, 0.04), 0 1px 1px rgba(31, 29, 26, 0.03);
-  --cp-shadow-md: 0 1px 2px rgba(31, 29, 26, 0.04), 0 8px 24px -8px rgba(31, 29, 26, 0.12);
-  --cp-shadow-lg: 0 2px 6px rgba(31, 29, 26, 0.05), 0 18px 40px -12px rgba(31, 29, 26, 0.18);
+  /* M3 outline-variant for the few dividers we keep */
+  --cp-hairline: rgb(var(--v-theme-outline-variant));
+  /* M3 elevation levels 1–3 (key + ambient shadow) */
+  --cp-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
+  --cp-shadow-md: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px 2px rgba(0, 0, 0, 0.15);
+  --cp-shadow-lg: 0 4px 8px 3px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 html[data-theme="dark"] {
   color-scheme: dark;
-  --cp-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --cp-shadow-md: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 28px -10px rgba(0, 0, 0, 0.6);
-  --cp-shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.35), 0 22px 44px -12px rgba(0, 0, 0, 0.7);
 }
 
 html[data-theme="light"] {
@@ -98,39 +102,26 @@ body {
    Vuetify refinements
    ------------------------------------------------------------------------- */
 
-/* Headings: tighter tracking, consistent weight */
-.text-headline-medium,
-.text-headline-small,
-.text-sm-headline-medium,
-.text-title-large {
-  letter-spacing: -0.01em !important;
-}
+/* M3 shape scale mapped onto Vuetify's rounded utilities */
+.rounded-sm { border-radius: var(--cp-radius-sm) !important; }
+.rounded-lg { border-radius: var(--cp-radius-md) !important; }
+.rounded-xl { border-radius: var(--cp-radius-xl) !important; }
 
-/* Cards: hairline borders instead of floating blobs */
+/* Cards: M3 filled cards on tonal surfaces, state layer on hover */
 .v-card {
-  border: 1px solid var(--cp-hairline);
-}
-.v-card.v-card--flat,
-.v-navigation-drawer .v-card,
-.v-overlay .v-card {
-  border-color: var(--cp-hairline);
+  border: 0;
 }
 .v-card--link {
-  transition: transform 0.2s var(--cp-ease), box-shadow 0.2s var(--cp-ease), border-color 0.2s var(--cp-ease);
+  transition: background-color 0.2s var(--cp-ease-std), box-shadow 0.2s var(--cp-ease-std);
 }
 .v-card--link:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--cp-shadow-md);
-  border-color: rgba(var(--v-theme-primary), 0.25);
-}
-.v-card--link > .v-card__overlay {
-  opacity: 0 !important;
+  box-shadow: var(--cp-shadow-sm);
 }
 
-/* Buttons */
+/* Buttons: M3 label-large */
 .v-btn {
-  letter-spacing: 0.01em;
-  font-weight: 600;
+  letter-spacing: 0.00625em;
+  font-weight: 500;
   text-transform: none;
 }
 .v-btn--size-default {
@@ -140,56 +131,51 @@ body {
   font-size: 0.8125rem;
 }
 
-/* Chips: lighter, quieter */
+/* Chips: M3 label-large, 8dp corners */
+.v-chip {
+  font-weight: 500;
+  letter-spacing: 0.00625em;
+}
 .v-chip.v-chip--size-x-small {
   font-size: 0.6875rem;
-  font-weight: 600;
   height: 20px;
   padding: 0 7px;
 }
 .v-chip.v-chip--size-small {
   font-size: 0.75rem;
-  font-weight: 500;
 }
 
-/* Inputs */
+/* Inputs: M3 outlined text fields (4dp corners), outline / primary on focus */
 .v-field--variant-outlined .v-field__outline {
-  --v-field-border-opacity: 0.16;
+  --v-field-border-opacity: 1;
+  color: rgb(var(--v-theme-outline));
 }
 .v-field--variant-outlined.v-field--focused .v-field__outline {
-  --v-field-border-opacity: 1;
-}
-.v-field {
-  border-radius: var(--cp-radius-md);
+  color: rgb(var(--v-theme-primary));
 }
 .v-field.v-field--rounded {
   border-radius: 999px;
 }
 
-/* Lists */
+/* Lists: M3 list item typography */
 .v-list-item-title {
   font-size: 0.875rem;
   font-weight: 500;
-  letter-spacing: 0;
+  letter-spacing: 0.00625em;
 }
 .v-list-item-subtitle {
   font-size: 0.8125rem;
-  letter-spacing: 0;
+  letter-spacing: 0.016em;
 }
 .v-list-subheader {
-  font-size: 0.6875rem !important;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  min-height: 32px !important;
-  padding-inline: 12px !important;
-  color: rgba(var(--v-theme-on-surface), 0.48);
+  font-size: 0.875rem !important;
+  font-weight: 500;
+  min-height: 40px !important;
+  padding-inline: 16px !important;
+  color: rgb(var(--v-theme-on-surface-variant));
 }
 
-/* Dialogs */
-.v-overlay__scrim {
-  backdrop-filter: blur(3px);
-}
+/* Dialogs: M3 elevation 3 */
 .v-dialog > .v-overlay__content > .v-card {
   box-shadow: var(--cp-shadow-lg);
 }
@@ -199,15 +185,10 @@ body {
   border-radius: var(--cp-radius-md);
 }
 
-/* Snackbar */
-.v-snackbar__wrapper {
-  box-shadow: var(--cp-shadow-lg) !important;
-}
-
-/* Tabs */
+/* Tabs: M3 title-small */
 .v-tab.v-btn {
-  font-weight: 600;
-  letter-spacing: 0;
+  font-weight: 500;
+  letter-spacing: 0.00625em;
 }
 
 /* ---------------------------------------------------------------------------
@@ -236,23 +217,25 @@ body {
   gap: 16px;
   margin-bottom: 28px;
 }
+/* M3 headline-medium → headline-large */
 .cp-page-title {
   font-size: 1.75rem;
-  line-height: 1.2;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  line-height: 2.25rem;
+  font-weight: 500;
+  letter-spacing: 0;
   margin: 0;
 }
 @media (min-width: 600px) {
   .cp-page-title {
     font-size: 2rem;
+    line-height: 2.5rem;
   }
 }
 .cp-page-subtitle {
   margin: 6px 0 0;
   font-size: 0.9375rem;
   line-height: 1.6;
-  color: rgba(var(--v-theme-on-surface), 0.62);
+  color: rgb(var(--v-theme-on-surface-variant));
   max-width: 620px;
 }
 .cp-eyebrow {
@@ -277,31 +260,39 @@ body {
   gap: 12px;
   margin-bottom: 14px;
 }
+/* M3 title-large */
 .cp-section-title {
-  font-size: 1.0625rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  font-size: 1.375rem;
+  line-height: 1.75rem;
+  font-weight: 400;
+  letter-spacing: 0;
   margin: 0;
 }
+/* M3 text button */
 .cp-section-link {
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: rgba(var(--v-theme-on-surface), 0.6);
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: 0.00625em;
+  color: rgb(var(--v-theme-primary));
   text-decoration: none;
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  transition: color 0.15s;
+  gap: 4px;
+  height: 40px;
+  padding: 0 12px 0 16px;
+  margin-right: -12px;
+  border-radius: 999px;
+  transition: background-color 0.15s var(--cp-ease-std);
 }
 .cp-section-link:hover {
-  color: rgb(var(--v-theme-primary));
+  background: rgba(var(--v-theme-primary), 0.08);
 }
 
 .cp-muted {
-  color: rgba(var(--v-theme-on-surface), 0.62);
+  color: rgb(var(--v-theme-on-surface-variant));
 }
 .cp-faint {
-  color: rgba(var(--v-theme-on-surface), 0.45);
+  color: rgba(var(--v-theme-on-surface-variant), 0.78);
 }
 
 .cp-grid {
@@ -310,10 +301,10 @@ body {
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
 }
 
+/* M3 filled card */
 .cp-panel {
-  background: rgb(var(--v-theme-surface));
-  border: 1px solid var(--cp-hairline);
-  border-radius: var(--cp-radius-lg);
+  background: rgb(var(--v-theme-surface-container-low));
+  border-radius: var(--cp-radius-md);
 }
 
 /* Toolbar / search field used in page headers */
@@ -331,8 +322,13 @@ body {
     min-width: 0;
   }
 }
+/* M3 search bar: surface-container-high, full corners, no outline */
 .cp-search .v-field {
-  background: rgb(var(--v-theme-surface));
+  background: rgb(var(--v-theme-surface-container-high));
+  border-radius: 999px;
+}
+.cp-search .v-field__outline {
+  display: none;
 }
 
 /* ---------------------------------------------------------------------------
@@ -348,8 +344,7 @@ body {
   margin: 0;
   padding: 12px 14px;
   border-radius: var(--cp-radius-md);
-  background: rgb(var(--v-theme-surface-light));
-  border: 1px solid var(--cp-hairline);
+  background: rgb(var(--v-theme-surface-container-highest));
   font-family: var(--font-mono);
   font-size: 12px;
   max-height: 260px;
@@ -397,17 +392,15 @@ body {
   position: relative;
   display: flex;
   flex-direction: column;
-  padding: 18px;
-  border-radius: var(--cp-radius-lg);
-  background: rgb(var(--v-theme-surface));
-  border: 1px solid var(--cp-hairline);
+  padding: 16px;
+  border-radius: var(--cp-radius-md);
+  background: rgb(var(--v-theme-surface-container-low));
   overflow: hidden;
-  transition: transform 0.2s var(--cp-ease), box-shadow 0.2s var(--cp-ease), border-color 0.2s;
+  transition: background-color 0.2s var(--cp-ease-std), box-shadow 0.2s var(--cp-ease-std);
 }
 .cp-char-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--cp-shadow-md);
-  border-color: color-mix(in srgb, var(--char) 35%, transparent);
+  background: rgb(var(--v-theme-surface-container));
+  box-shadow: var(--cp-shadow-sm);
 }
 .cp-char-card__wash {
   position: absolute;
@@ -421,17 +414,19 @@ body {
   flex-grow: 1;
   font-size: 0.875rem;
   line-height: 1.6;
-  color: rgba(var(--v-theme-on-surface), 0.66);
+  color: rgb(var(--v-theme-on-surface-variant));
   margin: 0 0 16px;
   min-height: 2.8em;
 }
+/* M3 assist-chip-like tag (outlined, 8dp) */
 .cp-tag {
   font-size: 0.75rem;
+  font-weight: 500;
   line-height: 1;
   padding: 5px 8px;
-  border-radius: 6px;
-  color: rgba(var(--v-theme-on-surface), 0.66);
-  background: rgba(var(--v-theme-on-surface), 0.05);
+  border-radius: var(--cp-radius-sm);
+  color: rgb(var(--v-theme-on-surface-variant));
+  border: 1px solid rgb(var(--v-theme-outline-variant));
   white-space: nowrap;
 }
 
@@ -446,8 +441,8 @@ body {
 .cp-clamp-2 { -webkit-line-clamp: 2; line-clamp: 2; }
 .cp-clamp-3 { -webkit-line-clamp: 3; line-clamp: 3; }
 .v-chip.cp-chip-quiet {
-  border-color: var(--cp-hairline) !important;
-  color: rgba(var(--v-theme-on-surface), 0.72);
+  border-color: rgb(var(--v-theme-outline-variant)) !important;
+  color: rgb(var(--v-theme-on-surface-variant));
   font-variant-numeric: tabular-nums;
 }
 /* Vuetify 4 MD3 linear progress draws a "stop indicator" dot and a gap at the
@@ -455,4 +450,40 @@ body {
 .v-progress-linear .v-progress-linear__stop-indicator,
 .v-progress-linear__stop {
   display: none !important;
+}
+
+/* M3 type: titles are medium weight; CJK reads better slightly heavier */
+.text-title-large.font-weight-bold,
+.text-title-medium.font-weight-bold,
+.text-title-small.font-weight-bold,
+.text-headline-small.font-weight-bold {
+  font-weight: 600 !important;
+}
+
+/* M3 filled-tonal button = secondary container (Vuetify's tonal is a tint of the color) */
+.v-btn.v-btn--variant-tonal:not(.text-error):not(.text-warning):not(.text-success) {
+  background: rgb(var(--v-theme-secondary-container));
+  color: rgb(var(--v-theme-on-secondary-container)) !important;
+}
+.v-btn.v-btn--variant-tonal:not(.text-error):not(.text-warning):not(.text-success) > .v-btn__underlay {
+  opacity: 0;
+}
+/* M3 outlined button uses the outline role */
+.v-btn.v-btn--variant-outlined {
+  border-color: rgb(var(--v-theme-outline));
+}
+/* M3 tonal chips → secondary container */
+.v-chip.v-chip--variant-tonal.text-primary,
+.v-chip.v-chip--variant-tonal.text-secondary {
+  background: rgb(var(--v-theme-secondary-container));
+  color: rgb(var(--v-theme-on-secondary-container)) !important;
+}
+.v-chip.v-chip--variant-tonal.text-tertiary {
+  background: rgb(var(--v-theme-tertiary-container));
+  color: rgb(var(--v-theme-on-tertiary-container)) !important;
+}
+.v-chip.v-chip--variant-tonal.text-primary > .v-chip__underlay,
+.v-chip.v-chip--variant-tonal.text-secondary > .v-chip__underlay,
+.v-chip.v-chip--variant-tonal.text-tertiary > .v-chip__underlay {
+  opacity: 0;
 }

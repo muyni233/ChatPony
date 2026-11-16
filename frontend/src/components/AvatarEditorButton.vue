@@ -130,8 +130,9 @@ function onFileChange(e: Event) {
   display: grid;
   place-items: center;
   border-radius: 999px;
-  border: 1px solid var(--cp-hairline);
-  background: rgb(var(--v-theme-surface));
+  border: 0;
+  box-shadow: var(--cp-shadow-sm);
+  background: rgb(var(--v-theme-surface-container-highest));
   color: rgb(var(--v-theme-on-surface));
   cursor: pointer;
 }

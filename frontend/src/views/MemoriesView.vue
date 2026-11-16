@@ -203,7 +203,7 @@ async function runRecallPreview() {
     </EmptyState>
 
     <template v-else>
-      <v-card color="surface" class="pa-4 mb-5">
+      <v-card class="pa-4 mb-5">
         <v-row density="compact">
           <v-col cols="12" sm="6" md="3">
             <v-select
@@ -270,7 +270,7 @@ async function runRecallPreview() {
 
       <v-row v-if="items.length">
         <v-col v-for="m in items" :key="m.id" cols="12" md="6" lg="4">
-          <v-card color="surface" class="pa-4 fill-height d-flex flex-column ga-3">
+          <v-card class="pa-4 fill-height d-flex flex-column ga-3">
             <div class="d-flex align-center flex-wrap ga-2">
               <AvatarBadge
                 v-if="m.characterName"
@@ -314,7 +314,7 @@ async function runRecallPreview() {
     </template>
 
     <v-dialog v-model="createOpen" max-width="520">
-      <v-card color="surface" class="pa-6">
+      <v-card class="pa-6">
         <div class="d-flex align-center justify-space-between mb-4">
           <h3 class="text-title-large font-weight-bold">添加手写长期记忆</h3>
           <v-btn icon="mdi-close" variant="text" size="small" @click="createOpen = false" />

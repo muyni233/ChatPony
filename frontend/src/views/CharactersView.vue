@@ -103,13 +103,15 @@ async function startGroup() {
         <v-btn-toggle
           v-model="scope"
           mandatory
-          density="compact"
-          rounded="lg"
+          divided
+          variant="outlined"
+          rounded="pill"
           class="cp-seg"
         >
-          <v-btn value="all">全部</v-btn>
-          <v-btn value="public">官方</v-btn>
-          <v-btn value="private">自设</v-btn>
+          <v-btn v-for="opt in [{ v: 'all', t: '全部' }, { v: 'public', t: '官方' }, { v: 'private', t: '自设' }]" :key="opt.v" :value="opt.v">
+            <v-icon v-if="scope === opt.v" icon="mdi-check" size="18" start />
+            {{ opt.t }}
+          </v-btn>
         </v-btn-toggle>
         <v-text-field
           v-model="search"
@@ -129,6 +131,7 @@ async function startGroup() {
         :class="{ 'is-on': selectedTag === 'all' }"
         @click="selectedTag = 'all'"
       >
+        <v-icon v-if="selectedTag === 'all'" icon="mdi-check" size="18" />
         全部 <span class="cp-faint">{{ store.characters.length }}</span>
       </button>
       <button
@@ -139,6 +142,7 @@ async function startGroup() {
         :class="{ 'is-on': selectedTag === tag }"
         @click="selectedTag = tag"
       >
+        <v-icon v-if="selectedTag === tag" icon="mdi-check" size="18" />
         {{ tag }}
       </button>
     </div>
@@ -169,7 +173,7 @@ async function startGroup() {
             :title="groupSelection.includes(ch.id) ? '移出群聊选择' : '加入群聊'"
             @click="toggleGroupMember(ch.id)"
           >
-            <v-icon :icon="groupSelection.includes(ch.id) ? 'mdi-check' : 'mdi-plus'" size="16" />
+            <v-icon :icon="groupSelection.includes(ch.id) ? 'mdi-check' : 'mdi-account-multiple-plus-outline'" size="20" />
           </button>
         </div>
 
@@ -238,50 +242,80 @@ async function startGroup() {
 </template>
 
 <style scoped>
+/* M3 segmented button: outlined, full corners, selected = secondary container + check */
 .cp-seg {
-  border: 1px solid var(--cp-hairline);
-  background: rgb(var(--v-theme-surface));
   height: 40px !important;
-  padding: 3px;
+  border-color: rgb(var(--v-theme-outline)) !important;
 }
 .cp-seg :deep(.v-btn) {
-  height: 32px !important;
-  border-radius: 8px !important;
-  font-size: 0.8125rem;
-  color: rgba(var(--v-theme-on-surface), 0.62);
+  height: 40px !important;
+  min-width: 72px;
+  padding: 0 14px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: rgb(var(--v-theme-on-surface));
+  border-color: rgb(var(--v-theme-outline)) !important;
 }
 .cp-seg :deep(.v-btn--active) {
-  background: rgba(var(--v-theme-primary), 0.12);
-  color: rgb(var(--v-theme-primary));
+  background: rgb(var(--v-theme-secondary-container));
+  color: rgb(var(--v-theme-on-secondary-container));
 }
 .cp-seg :deep(.v-btn--active > .v-btn__overlay) {
   opacity: 0;
 }
+@media (max-width: 599px) {
+  .cp-seg {
+    flex: 1;
+  }
+  .cp-seg :deep(.v-btn) {
+    flex: 1;
+    min-width: 0;
+  }
+  .cp-page-header :deep(.cp-search) {
+    flex: 1 1 100%;
+  }
+}
 
+/* M3 filter chips */
 .cp-tagbar {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
 }
 .cp-filter {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   height: 32px;
-  padding: 0 12px;
-  border-radius: 999px;
-  font-size: 0.8125rem;
+  padding: 0 16px;
+  border-radius: var(--cp-radius-sm);
+  font-size: 0.875rem;
   font-weight: 500;
-  color: rgba(var(--v-theme-on-surface), 0.7);
-  border: 1px solid var(--cp-hairline);
-  background: rgb(var(--v-theme-surface));
+  letter-spacing: 0.00625em;
+  color: rgb(var(--v-theme-on-surface-variant));
+  border: 1px solid rgb(var(--v-theme-outline-variant));
+  background: transparent;
   cursor: pointer;
-  transition: all 0.15s;
+  overflow: hidden;
+  transition: background-color 0.15s var(--cp-ease-std);
 }
-.cp-filter:hover {
-  border-color: rgba(var(--v-theme-on-surface), 0.2);
+.cp-filter::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.cp-filter:hover::after {
+  opacity: 0.08;
 }
 .cp-filter.is-on {
-  color: rgb(var(--v-theme-on-primary));
-  background: rgb(var(--v-theme-primary));
-  border-color: rgb(var(--v-theme-primary));
+  padding-left: 8px;
+  color: rgb(var(--v-theme-on-secondary-container));
+  background: rgb(var(--v-theme-secondary-container));
+  border-color: transparent;
 }
 .cp-filter.is-on .cp-faint {
   color: inherit;
@@ -289,30 +323,40 @@ async function startGroup() {
 }
 
 .cp-char-card.is-selected {
-  border-color: rgb(var(--v-theme-primary));
-  box-shadow: 0 0 0 1px rgb(var(--v-theme-primary)), var(--cp-shadow-md);
+  background: rgb(var(--v-theme-secondary-container));
+  box-shadow: inset 0 0 0 2px rgb(var(--v-theme-primary));
 }
+/* M3 icon button (toggle): standard → filled when selected */
 .cp-pick {
-  width: 30px;
-  height: 30px;
+  position: relative;
+  width: 40px;
+  height: 40px;
+  margin: -6px -6px 0 0;
   flex-shrink: 0;
   display: grid;
   place-items: center;
-  border-radius: 9px;
-  border: 1px solid var(--cp-hairline);
-  background: rgb(var(--v-theme-surface));
-  color: rgba(var(--v-theme-on-surface), 0.6);
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: rgb(var(--v-theme-on-surface-variant));
   cursor: pointer;
-  transition: all 0.15s;
+  overflow: hidden;
+  transition: background-color 0.15s, color 0.15s;
 }
-.cp-pick:hover {
-  color: rgb(var(--v-theme-primary));
-  border-color: rgba(var(--v-theme-primary), 0.4);
+.cp-pick::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.cp-pick:hover::after {
+  opacity: 0.08;
 }
 .cp-pick.is-on {
   color: rgb(var(--v-theme-on-primary));
   background: rgb(var(--v-theme-primary));
-  border-color: rgb(var(--v-theme-primary));
 }
 
 .cp-dock {
@@ -324,10 +368,9 @@ async function startGroup() {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 8px 8px 12px;
-  border-radius: 16px;
-  background: rgb(var(--v-theme-surface));
-  border: 1px solid var(--cp-hairline);
+  padding: 8px 8px 8px 16px;
+  border-radius: var(--cp-radius-lg);
+  background: rgb(var(--v-theme-surface-container-high));
   box-shadow: var(--cp-shadow-lg);
   white-space: nowrap;
 }
@@ -338,7 +381,7 @@ async function startGroup() {
 }
 @media (max-width: 959px) {
   .cp-dock {
-    bottom: 76px;
+    bottom: 96px;
   }
 }
 .cp-dock-enter-active,

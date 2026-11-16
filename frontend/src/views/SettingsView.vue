@@ -108,7 +108,7 @@ async function submitPassword() {
     <div v-else class="d-flex flex-column ga-5">
       <QuotaCard v-if="store.quota" :quota="store.quota" />
 
-      <v-card color="surface" class="pa-5 d-flex align-center justify-space-between flex-wrap ga-3">
+      <v-card class="pa-5 d-flex align-center justify-space-between flex-wrap ga-3">
         <div>
           <div class="text-title-medium font-weight-bold">外观主题</div>
           <div class="text-body-medium text-medium-emphasis">在浅色模式与深色模式之间即时切换</div>
@@ -123,7 +123,7 @@ async function submitPassword() {
         </v-btn>
       </v-card>
 
-      <v-card color="surface" class="pa-5">
+      <v-card class="pa-5">
         <div class="text-title-medium font-weight-bold mb-4">基本资料与头像</div>
         <AvatarEditorButton
           :name="store.user.name"
@@ -159,7 +159,7 @@ async function submitPassword() {
         </v-form>
       </v-card>
 
-      <v-card color="surface" class="pa-5">
+      <v-card class="pa-5">
         <div class="text-title-medium font-weight-bold mb-4 d-flex align-center ga-2">
           <v-icon icon="mdi-key-outline" color="primary" />
           修改密码

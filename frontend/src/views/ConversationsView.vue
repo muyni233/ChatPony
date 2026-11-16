@@ -148,10 +148,10 @@ async function handleDelete(id: string) {
   transition: background 0.15s;
 }
 .cp-conv-row + .cp-conv-row {
-  border-top: 1px solid var(--cp-hairline);
+  border-top: 1px solid rgb(var(--v-theme-outline-variant));
 }
 .cp-conv-row:hover {
-  background: rgba(var(--v-theme-on-surface), 0.03);
+  background: rgba(var(--v-theme-on-surface), 0.08);
 }
 .cp-conv-av {
   position: relative;
@@ -170,7 +170,7 @@ async function handleDelete(id: string) {
   bottom: 0;
 }
 .cp-conv-row__del {
-  color: rgba(var(--v-theme-on-surface), 0.45);
+  color: rgb(var(--v-theme-on-surface-variant));
   opacity: 0;
   transition: opacity 0.15s;
 }
@@ -189,10 +189,11 @@ async function handleDelete(id: string) {
 .cp-kind {
   flex-shrink: 0;
   font-size: 0.6875rem;
-  font-weight: 700;
-  padding: 2px 6px;
-  border-radius: 6px;
-  color: rgb(var(--v-theme-secondary));
-  background: rgba(var(--v-theme-secondary), 0.12);
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  padding: 2px 8px;
+  border-radius: var(--cp-radius-sm);
+  color: rgb(var(--v-theme-on-secondary-container));
+  background: rgb(var(--v-theme-secondary-container));
 }
 </style>
