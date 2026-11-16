@@ -88,7 +88,7 @@ async function handleCreate() {
       </div>
 
       <div class="d-flex align-center justify-space-between flex-wrap ga-2 mb-4">
-        <v-btn-toggle v-model="scope" mandatory variant="outlined" color="primary" density="compact" rounded="pill">
+        <v-btn-toggle v-model="scope" mandatory class="cp-connected">
           <v-btn value="all">全部角色</v-btn>
           <v-btn value="public">官方馆藏</v-btn>
           <v-btn value="private">我的自设</v-btn>

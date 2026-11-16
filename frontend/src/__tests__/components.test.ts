@@ -58,7 +58,9 @@ describe('Vuetify 4 MD3 Components', () => {
         },
       },
     });
-    expect(wrapper.text()).toContain('剩余 38 / 50');
-    expect(wrapper.text()).toContain('剩余 460 / 500');
+    const nums = wrapper.findAll('.cp-quota-big__num').map((n) => n.text());
+    expect(nums).toEqual(['38', '460']);
+    expect(wrapper.text()).toContain('/ 50 次剩余');
+    expect(wrapper.text()).toContain('/ 500 次剩余');
   });
 });

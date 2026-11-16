@@ -53,6 +53,7 @@ async function quickStartChat(characterId: string) {
   <div class="cp-page">
     <!-- Hero -->
     <header class="cp-hero cp-rise">
+      <span class="cp-hero__shape cp-hero__shape--a cp-shape cp-shape--cookie12" aria-hidden="true" />
       <div class="cp-hero__text">
         <div class="cp-eyebrow">
           <v-icon icon="mdi-creation" size="14" />
@@ -69,13 +70,14 @@ async function quickStartChat(characterId: string) {
           <v-btn
             color="primary"
             variant="flat"
-            height="40"
+            height="52"
+            class="cp-btn-lg"
             prepend-icon="mdi-plus"
             @click="store.user ? store.openNewChat() : store.openAuth('login')"
           >
             {{ store.user ? '发起新对话' : '登录开始' }}
           </v-btn>
-          <v-btn variant="outlined" height="40" to="/characters" class="cp-btn-ghost">浏览角色</v-btn>
+          <v-btn variant="outlined" height="52" to="/characters" class="cp-btn-lg cp-btn-ghost">浏览角色</v-btn>
         </div>
       </div>
 
@@ -155,9 +157,8 @@ async function quickStartChat(characterId: string) {
           class="cp-char-card"
           :style="{ '--char': ch.color || '#245C50' }"
         >
-          <div class="cp-char-card__wash" />
           <div class="d-flex align-start ga-3 mb-3 position-relative">
-            <AvatarBadge :name="ch.name" :avatar="ch.avatar" :color="ch.color" :size="48" rounded="lg" />
+            <AvatarBadge :name="ch.name" :avatar="ch.avatar" :color="ch.color" :size="52" rounded="lg" class="cp-char-card__avatar" />
             <div class="flex-grow-1 min-width-0 pt-1">
               <div class="d-flex align-center ga-2">
                 <span class="text-title-medium font-weight-bold text-truncate">{{ ch.name }}</span>
@@ -213,7 +214,7 @@ async function quickStartChat(characterId: string) {
             <v-icon icon="mdi-chevron-right" size="16" />
           </router-link>
         </div>
-        <div class="cp-panel cp-ann-list">
+        <div class="cp-seglist">
           <div v-for="a in recentAnnouncements" :key="a.id" class="cp-ann">
             <div class="d-flex align-center ga-2 mb-1">
               <span v-if="a.pinned" class="cp-pin"><v-icon icon="mdi-pin" size="12" />置顶</span>
@@ -245,26 +246,27 @@ async function quickStartChat(characterId: string) {
   align-items: flex-end;
   justify-content: space-between;
   gap: 28px;
-  padding: 40px 36px 36px;
-  margin-bottom: 40px;
-  border-radius: var(--cp-radius-xl);
+  padding: 44px 40px 40px;
+  margin-bottom: 48px;
+  border-radius: var(--cp-radius-xl-inc);
   overflow: hidden;
   color: rgb(var(--v-theme-on-primary-container));
   background: rgb(var(--v-theme-primary-container));
 }
-.cp-hero::before {
-  /* soft organic shape, M3 expressive */
-  content: '';
+.cp-hero__shape {
   position: absolute;
-  right: -80px;
-  top: -120px;
-  width: 360px;
-  height: 360px;
-  border-radius: 42% 58% 63% 37% / 45% 40% 60% 55%;
-  background: rgba(var(--v-theme-primary), 0.12);
   pointer-events: none;
 }
-.cp-hero > * {
+/* M3 Expressive: oversized library shapes, turning slowly behind the content */
+.cp-hero__shape--a {
+  right: -96px;
+  top: -150px;
+  width: 400px;
+  height: 400px;
+  background: rgba(var(--v-theme-primary), 0.1);
+  animation: cp-spin 60s linear infinite;
+}
+.cp-hero > :not(.cp-hero__shape) {
   position: relative;
 }
 .cp-hero .cp-eyebrow {
@@ -280,34 +282,48 @@ async function quickStartChat(characterId: string) {
 .cp-hero__text {
   max-width: 560px;
 }
-/* M3 headline-large → display-small */
+/* M3 Expressive: emphasized display-small → display-medium */
 .cp-hero__title {
-  font-size: 1.75rem;
-  line-height: 2.25rem;
-  font-weight: 500;
-  letter-spacing: 0;
+  font-size: 1.875rem;
+  line-height: 2.375rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   margin: 0;
+  text-wrap: balance;
 }
 @media (min-width: 600px) {
   .cp-hero__title {
-    font-size: 2.25rem;
-    line-height: 2.75rem;
+    font-size: 2.5rem;
+    line-height: 3.125rem;
   }
+}
+.cp-btn-lg {
+  font-size: 1rem !important;
+  padding-inline: 24px !important;
 }
 .cp-hero__stats {
   display: flex;
   gap: 8px;
 }
 .cp-stat {
-  min-width: 96px;
-  padding: 14px 16px;
-  border-radius: var(--cp-radius-lg);
-  background: rgba(var(--v-theme-surface-container-lowest), 0.6);
+  min-width: 104px;
+  padding: 14px 18px 16px;
+  border-radius: var(--cp-radius-lg-inc);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.62);
+  transition: border-radius var(--cp-spring), transform var(--cp-spring);
+}
+.v-theme--dark .cp-stat {
+  background: rgba(var(--v-theme-on-primary-container), 0.1);
+}
+.cp-stat:hover {
+  border-radius: 32px;
+  transform: translateY(-2px);
 }
 .cp-stat__num {
-  font-size: 1.75rem;
-  font-weight: 400;
-  line-height: 2.25rem;
+  font-size: 2rem;
+  font-weight: 600;
+  line-height: 2.5rem;
+  letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
 .cp-stat__label {
@@ -319,8 +335,15 @@ async function quickStartChat(characterId: string) {
 @media (max-width: 599px) {
   .cp-hero {
     padding: 28px 22px 24px;
+    border-radius: var(--cp-radius-xl);
   }
-  .cp-hero__stats {
+  .cp-hero__shape--a {
+    right: -140px;
+    top: -170px;
+    width: 340px;
+    height: 340px;
+  }
+    .cp-hero__stats {
     width: 100%;
   }
   .cp-stat {
@@ -335,7 +358,7 @@ async function quickStartChat(characterId: string) {
 }
 
 .cp-conv-card {
-  padding: 16px 18px;
+  padding: 18px 20px;
 }
 .cp-conv-card__preview {
   font-size: 0.875rem;
@@ -353,14 +376,8 @@ async function quickStartChat(characterId: string) {
     grid-template-columns: 1fr 1fr;
   }
 }
-.cp-ann-list {
-  overflow: hidden;
-}
 .cp-ann {
   padding: 16px 20px;
-}
-.cp-ann + .cp-ann {
-  border-top: 1px solid rgb(var(--v-theme-outline-variant));
 }
 .cp-pin {
   display: inline-flex;

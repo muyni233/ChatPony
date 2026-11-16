@@ -133,11 +133,7 @@ async function handleSubmit() {
       <v-btn-toggle
         v-model="mode"
         mandatory
-        divided
-        variant="outlined"
-        color="primary"
-        rounded="pill"
-        class="w-100 mb-4"
+        class="cp-connected w-100 mb-4"
         @update:model-value="errorMsg = ''"
       >
         <v-btn value="login" class="flex-grow-1">登录账号</v-btn>

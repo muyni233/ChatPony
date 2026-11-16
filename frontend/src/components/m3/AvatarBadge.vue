@@ -24,7 +24,7 @@ const label = computed(() => {
 });
 
 const fallbackStyle = computed(() => ({
-  background: `linear-gradient(140deg, color-mix(in srgb, ${bg.value} 82%, white) 0%, ${bg.value} 62%, color-mix(in srgb, ${bg.value} 80%, black) 100%)`,
+  background: bg.value,
   fontSize: `${Math.max(11, Math.round(px.value * (label.value.length > 1 ? 0.36 : 0.42)))}px`,
 }));
 </script>
@@ -32,7 +32,8 @@ const fallbackStyle = computed(() => ({
 <template>
   <v-avatar
     :size="px"
-    :rounded="rounded"
+:rounded="rounded"
+    :style="{ '--cp-av-r': `${Math.max(8, Math.round(px * 0.28))}px` }"
     :color="avatar && !failed ? 'surface-light' : undefined"
     class="cp-avatar flex-shrink-0"
     :class="{ 'cp-avatar--ring': ring }"
@@ -46,8 +47,15 @@ const fallbackStyle = computed(() => ({
 .cp-avatar {
   overflow: hidden;
 }
+/* Rounded-rectangle avatars keep the same corner proportion at every size */
+.cp-avatar.rounded-lg {
+  border-radius: var(--cp-av-r) !important;
+}
+/* Rounded-rectangle avatars keep the same proportion at every size */
+
 .cp-avatar--ring {
-  box-shadow: 0 0 0 2px rgb(var(--v-theme-surface));
+  /* The ring matches whatever surface the avatar sits on (set --cp-ring there). */
+  box-shadow: 0 0 0 2px var(--cp-ring, rgb(var(--v-theme-surface)));
 }
 .cp-avatar__fallback {
   display: flex;

@@ -73,11 +73,12 @@ async function handleDelete(id: string) {
       </template>
     </EmptyState>
 
-    <div v-else-if="filtered.length" class="cp-panel cp-conv-list">
+    <div v-else-if="filtered.length" class="cp-seglist">
       <router-link
         v-for="conv in filtered"
         :key="conv.id"
         :to="`/chat/${conv.id}`"
+        v-ripple
         class="cp-conv-row"
       >
         <div class="cp-conv-av" :class="{ 'is-group': conv.characterIds.length > 1 }">
@@ -87,7 +88,7 @@ async function handleDelete(id: string) {
             :name="charById.get(cid)?.name ?? '角'"
             :avatar="charById.get(cid)?.avatar"
             :color="charById.get(cid)?.color"
-            :size="conv.characterIds.length > 1 ? 30 : 42"
+            :size="conv.characterIds.length > 1 ? 30 : 44"
             :ring="conv.characterIds.length > 1"
           />
         </div>
@@ -135,28 +136,22 @@ async function handleDelete(id: string) {
 </template>
 
 <style scoped>
-.cp-conv-list {
-  overflow: hidden;
-}
 .cp-conv-row {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
+  min-height: 76px;
   padding: 14px 10px 14px 16px;
   color: inherit;
   text-decoration: none;
-  transition: background 0.15s;
-}
-.cp-conv-row + .cp-conv-row {
-  border-top: 1px solid rgb(var(--v-theme-outline-variant));
 }
 .cp-conv-row:hover {
-  background: rgba(var(--v-theme-on-surface), 0.08);
+  --cp-ring: rgb(var(--v-theme-surface-container));
 }
 .cp-conv-av {
   position: relative;
-  width: 42px;
-  height: 42px;
+  width: 44px;
+  height: 44px;
   flex-shrink: 0;
 }
 .cp-conv-av.is-group > :first-child {

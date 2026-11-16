@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { QuotaSnapshot, QuotaWindow } from '../lib/types';
 import { formatDateTime } from '../lib/display';
+import WavyProgress from './m3/WavyProgress.vue';
 
 defineProps<{
   quota: QuotaSnapshot;
@@ -67,11 +68,16 @@ function tone(w: QuotaWindow): string {
           <span class="text-body-small cp-faint">已用 {{ row.w.used }}</span>
         </div>
         <div class="cp-quota-big mb-3">
-          剩余 {{ row.w.remaining }} / {{ row.w.limit }}
+          <span class="cp-quota-big__num">{{ row.w.remaining }}</span>
+          <span class="cp-quota-big__of">/ {{ row.w.limit }} 次剩余</span>
         </div>
-        <div class="cp-meter mb-3" style="--h:6px" role="progressbar" :aria-valuenow="row.w.remaining" aria-valuemin="0" :aria-valuemax="row.w.limit">
-          <span class="cp-meter__fill" :class="tone(row.w) && `bg-${tone(row.w)}`" :style="{ width: pct(row.w.remaining, row.w.limit) + '%', background: tone(row.w) ? undefined : barColor(row.color) }" />
-        </div>
+        <WavyProgress
+          class="mb-3"
+          :value="row.w.remaining"
+          :max="row.w.limit"
+          :color="tone(row.w) || row.color"
+          :label="`${row.label}剩余额度`"
+        />
         <div class="text-body-small cp-faint">最早恢复：{{ formatDateTime(row.w.resetsAt) }}</div>
       </div>
     </div>
@@ -90,14 +96,14 @@ function tone(w: QuotaWindow): string {
   position: absolute;
   inset: 0 auto 0 0;
   border-radius: inherit;
-  transition: width 0.4s var(--cp-ease, ease);
+  transition: width var(--cp-spring-slow, 0.4s ease);
 }
 .cp-quota-mini {
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: 12px 14px;
-  border-radius: var(--cp-radius-md);
+  border-radius: var(--cp-radius-lg);
   background: rgb(var(--v-theme-surface-container));
 }
 .cp-quota-mini__label {
@@ -115,14 +121,25 @@ function tone(w: QuotaWindow): string {
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
 .cp-quota-cell {
-  padding: 16px 18px;
-  border-radius: var(--cp-radius-md);
+  padding: 18px 20px 16px;
+  border-radius: var(--cp-radius-lg-inc);
   background: rgb(var(--v-theme-surface-container));
 }
 .cp-quota-big {
-  font-size: 1.375rem;
-  line-height: 1.75rem;
-  font-weight: 400;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
   font-variant-numeric: tabular-nums;
+}
+/* M3 Expressive: emphasized display numerals */
+.cp-quota-big__num {
+  font-size: 2.25rem;
+  line-height: 2.75rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.cp-quota-big__of {
+  font-size: 0.875rem;
+  color: rgb(var(--v-theme-on-surface-variant));
 }
 </style>

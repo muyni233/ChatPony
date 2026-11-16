@@ -210,7 +210,7 @@ async function delAnn(id: string) {
 </script>
 
 <template>
-  <div class="cp-page" style="max-width:1240px">
+  <div class="cp-page cp-admin" style="max-width:1240px">
     <div class="cp-page-header">
       <div>
         <h1 class="cp-page-title">管理后台</h1>
@@ -226,41 +226,27 @@ async function delAnn(id: string) {
     />
 
     <template v-else>
-      <v-card border rounded="lg" class="mb-5">
-        <v-tabs v-model="activeTab" color="primary" show-arrows>
+      <div class="cp-admin-tabs mb-6">
+        <v-tabs v-model="activeTab" color="primary" show-arrows height="56">
           <v-tab v-for="t in tabs" :key="t.key" :value="t.key" :prepend-icon="t.icon">
             {{ t.label }}
           </v-tab>
         </v-tabs>
-      </v-card>
+      </div>
 
       <!-- 1. Overview -->
-      <v-row v-if="activeTab === 'overview' && overview" density="compact">
-        <v-col cols="6" md="3">
-          <v-card border class="pa-5">
-            <div class="text-body-small text-medium-emphasis">注册用户</div>
-            <div class="text-headline-medium font-weight-bold mt-2 text-primary">{{ overview.users }}</div>
-          </v-card>
-        </v-col>
-        <v-col cols="6" md="3">
-          <v-card border class="pa-5">
-            <div class="text-body-small text-medium-emphasis">官方角色</div>
-            <div class="text-headline-medium font-weight-bold mt-2 text-secondary">{{ overview.characters }}</div>
-          </v-card>
-        </v-col>
-        <v-col cols="6" md="3">
-          <v-card border class="pa-5">
-            <div class="text-body-small text-medium-emphasis">累计会话</div>
-            <div class="text-headline-medium font-weight-bold mt-2 text-tertiary">{{ overview.conversations }}</div>
-          </v-card>
-        </v-col>
-        <v-col cols="6" md="3">
-          <v-card border class="pa-5">
-            <div class="text-body-small text-medium-emphasis">模型调用次数</div>
-            <div class="text-headline-medium font-weight-bold mt-2">{{ overview.calls }}</div>
-          </v-card>
-        </v-col>
-      </v-row>
+      <div v-if="activeTab === 'overview' && overview" class="cp-ov">
+        <div v-for="t in [
+          { label: '注册用户', value: overview.users, icon: 'mdi-account-multiple-outline', tone: 'primary' },
+          { label: '官方角色', value: overview.characters, icon: 'mdi-account-star-outline', tone: 'secondary' },
+          { label: '累计会话', value: overview.conversations, icon: 'mdi-message-text-outline', tone: 'tertiary' },
+          { label: '模型调用次数', value: overview.calls, icon: 'mdi-lightning-bolt-outline', tone: 'surface' },
+        ]" :key="t.label" class="cp-ov__tile" :class="`is-${t.tone}`">
+          <span class="cp-ov__icon"><v-icon :icon="t.icon" size="22" /></span>
+          <div class="cp-ov__num">{{ t.value.toLocaleString('zh-CN') }}</div>
+          <div class="cp-ov__label">{{ t.label }}</div>
+        </div>
+      </div>
 
       <!-- 2. Suppliers & Models -->
       <AdminSuppliersTab
@@ -535,3 +521,83 @@ async function delAnn(id: string) {
     </template>
   </div>
 </template>
+
+<style scoped>
+/* Tabs sit on the page, M3 primary tabs with a divider */
+.cp-admin-tabs {
+  border-bottom: 1px solid rgb(var(--v-theme-outline-variant));
+}
+.cp-admin-tabs :deep(.v-tab) {
+  text-transform: none;
+  letter-spacing: 0.00625em;
+  font-weight: 500;
+}
+.cp-admin-tabs :deep(.v-tab__slider) {
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+}
+/* Admin cards: filled, no outlines */
+.cp-admin :deep(.v-card.border) {
+  border: 0 !important;
+  border-radius: var(--cp-radius-xl) !important;
+}
+.cp-admin :deep(.v-card.bg-surface-light) {
+  background: rgb(var(--v-theme-surface-container)) !important;
+  border-radius: var(--cp-radius-lg) !important;
+}
+
+.cp-ov {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+@media (max-width: 959px) {
+  .cp-ov {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.cp-ov__tile {
+  padding: 20px 20px 18px;
+  border-radius: var(--cp-radius-xl);
+  transition: border-radius var(--cp-spring);
+}
+.cp-ov__tile:hover {
+  border-radius: var(--cp-radius-lg);
+}
+.cp-ov__tile.is-primary {
+  color: rgb(var(--v-theme-on-primary-container));
+  background: rgb(var(--v-theme-primary-container));
+}
+.cp-ov__tile.is-secondary {
+  color: rgb(var(--v-theme-on-secondary-container));
+  background: rgb(var(--v-theme-secondary-container));
+}
+.cp-ov__tile.is-tertiary {
+  color: rgb(var(--v-theme-on-tertiary-container));
+  background: rgb(var(--v-theme-tertiary-container));
+}
+.cp-ov__tile.is-surface {
+  background: rgb(var(--v-theme-surface-container-high));
+}
+.cp-ov__icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: 18px;
+  border-radius: 12px;
+  background: rgba(var(--v-theme-surface-container-lowest), 0.55);
+}
+.cp-ov__num {
+  font-size: 2.25rem;
+  line-height: 2.75rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.cp-ov__label {
+  margin-top: 2px;
+  font-size: 0.875rem;
+  opacity: 0.8;
+}
+</style>

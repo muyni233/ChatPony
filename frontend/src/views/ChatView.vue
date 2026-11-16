@@ -3,6 +3,7 @@ import { computed, nextTick, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import AvatarBadge from '../components/m3/AvatarBadge.vue';
 import EmptyState from '../components/m3/EmptyState.vue';
+import M3Loader from '../components/m3/M3Loader.vue';
 import { api, ApiError, copyText, newRequestId, streamChatMessage } from '../lib/api';
 import {
   deleteCachedConversation,
@@ -534,11 +535,11 @@ function bubblesForMessage(m: Message): string[] {
                 </div>
                 <div class="cp-msg__meta">
                   <span>{{ formatDateTime(msg.createdAt) }}</span>
-                  <button type="button" class="cp-msg__act" @click="onCopyMessage(msg)">
+                  <button v-ripple type="button" class="cp-msg__act" @click="onCopyMessage(msg)">
                     <v-icon :icon="copiedMsgId === msg.id ? 'mdi-check' : 'mdi-content-copy'" size="13" />
                     {{ copiedMsgId === msg.id ? '已复制' : '复制' }}
                   </button>
-                  <button type="button" class="cp-msg__act" :disabled="streaming" @click="handleSend(msg.id)">
+                  <button v-ripple type="button" class="cp-msg__act" :disabled="streaming" @click="handleSend(msg.id)">
                     <v-icon icon="mdi-refresh" size="13" />
                     重新生成
                   </button>
@@ -581,7 +582,7 @@ function bubblesForMessage(m: Message): string[] {
           </div>
 
           <div v-if="statusText" class="cp-status">
-            <span class="cp-typing cp-typing--sm"><i /><i /><i /></span>
+            <M3Loader :size="22" :label="statusText" />
             {{ statusText }}
           </div>
 
@@ -618,6 +619,7 @@ function bubblesForMessage(m: Message): string[] {
               <button
                 v-for="c in detail.characters"
                 :key="c.id"
+                v-ripple
                 type="button"
                 class="cp-mention"
                 @click="insertMention(c.name)"
@@ -709,7 +711,7 @@ function bubblesForMessage(m: Message): string[] {
             <div class="cp-inspector__label">参与角色</div>
             <div class="d-flex flex-column ga-1 mb-6">
               <div v-for="c in detail.characters" :key="c.id" class="cp-member">
-                <AvatarBadge :name="c.name" :avatar="c.avatar" :color="c.color" :size="36" rounded="lg" />
+                <AvatarBadge :name="c.name" :avatar="c.avatar" :color="c.color" :size="40" rounded="lg" />
                 <div class="flex-grow-1 min-width-0">
                   <div class="text-title-small font-weight-bold">{{ c.name }}</div>
                   <div class="text-body-small cp-muted text-truncate">{{ c.description || `@${c.slug}` }}</div>
@@ -759,7 +761,7 @@ function bubblesForMessage(m: Message): string[] {
     </template>
 
     <div v-else-if="loading" class="cp-chat-loading">
-      <v-progress-circular indeterminate color="primary" size="28" width="3" />
+      <M3Loader :size="52" contained label="正在载入对话" />
     </div>
 
     <div v-else class="cp-page cp-page--narrow">
@@ -889,8 +891,8 @@ function bubblesForMessage(m: Message): string[] {
 
 .cp-summary {
   margin-bottom: 24px;
-  padding: 14px 16px;
-  border-radius: var(--cp-radius-md);
+  padding: 14px 18px 16px;
+  border-radius: var(--cp-radius-lg-inc);
   color: rgb(var(--v-theme-on-tertiary-container));
   background: rgb(var(--v-theme-tertiary-container));
   border: 0;
@@ -917,7 +919,6 @@ function bubblesForMessage(m: Message): string[] {
   display: flex;
   gap: 12px;
   margin-top: 6px;
-  animation: cp-rise 0.3s var(--cp-ease) both;
 }
 .cp-msg.is-cont {
   margin-top: -4px;
@@ -962,19 +963,32 @@ function bubblesForMessage(m: Message): string[] {
   white-space: pre-wrap;
   word-break: break-word;
   border-radius: 20px;
+  animation: cp-pop var(--cp-spring) both;
+  transform-origin: top left;
+}
+.cp-bubble--user {
+  transform-origin: top right;
 }
 /* M3: received bubbles on surface-container-high, sent on primary */
 .cp-bubble--ai {
   background: rgb(var(--v-theme-surface-container-high));
-  border-top-left-radius: 4px;
+  border-top-left-radius: 6px;
 }
-.cp-bubble--ai + .cp-bubble--ai {
-  border-top-left-radius: 4px;
+/* Grouped bubbles share small inner corners, like one continuous voice */
+.cp-bubble--ai:has(+ .cp-bubble--ai),
+.cp-msg:has(+ .cp-msg--ai.is-cont) .cp-bubble--ai:nth-last-child(2) {
+  border-bottom-left-radius: 6px;
 }
 .cp-bubble--user {
   color: rgb(var(--v-theme-on-primary));
   background: rgb(var(--v-theme-primary));
-  border-top-right-radius: 4px;
+  border-top-right-radius: 6px;
+}
+.cp-msg:has(+ .cp-msg--user) .cp-bubble--user {
+  border-bottom-right-radius: 6px;
+}
+.cp-msg--user + .cp-msg--user {
+  margin-top: 2px;
 }
 .cp-bubble--user ::selection {
   background: rgba(255, 255, 255, 0.3);
@@ -1039,7 +1053,7 @@ function bubblesForMessage(m: Message): string[] {
   height: 6px;
   border-radius: 50%;
   background: rgb(var(--v-theme-on-surface-variant));
-  animation: cp-blink 1.2s infinite ease-in-out both;
+  animation: cp-blink 1.2s infinite cubic-bezier(0.38, 1.21, 0.22, 1) both;
 }
 .cp-typing i:nth-child(2) {
   animation-delay: 0.15s;
@@ -1060,7 +1074,7 @@ function bubblesForMessage(m: Message): string[] {
   }
   40% {
     opacity: 1;
-    transform: translateY(-2px);
+    transform: translateY(-3px) scale(1.15);
   }
 }
 .cp-caret {
@@ -1102,9 +1116,10 @@ function bubblesForMessage(m: Message): string[] {
   border-radius: var(--cp-radius-xl);
   padding: 12px 10px 10px 18px;
   box-shadow: inset 0 0 0 1px transparent;
-  transition: box-shadow 0.15s var(--cp-ease-std);
+  transition: box-shadow var(--cp-fx), border-radius var(--cp-spring), background-color var(--cp-fx);
 }
 .cp-composer:focus-within {
+  border-radius: var(--cp-radius-lg-inc);
   box-shadow: inset 0 0 0 2px rgb(var(--v-theme-primary));
 }
 .cp-composer-input {
@@ -1142,10 +1157,22 @@ function bubblesForMessage(m: Message): string[] {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* M3 filled icon button */
+/* M3 Expressive filled icon button: square at rest, round on hover, tighter when pressed */
 .cp-send {
-  width: 40px !important;
-  height: 40px !important;
+  width: 44px !important;
+  height: 44px !important;
+  border-radius: 14px !important;
+}
+.cp-send:not(.v-btn--disabled):hover {
+  border-radius: 22px !important;
+}
+.cp-send:not(.v-btn--disabled):active {
+  border-radius: 10px !important;
+}
+.cp-send.v-btn--disabled {
+  background: rgba(var(--v-theme-on-surface), 0.1) !important;
+  color: rgba(var(--v-theme-on-surface), 0.38) !important;
+  opacity: 1;
 }
 .cp-mentions {
   display: flex;
@@ -1170,7 +1197,10 @@ function bubblesForMessage(m: Message): string[] {
   background: transparent;
   box-shadow: inset 0 0 0 1px rgb(var(--v-theme-outline-variant));
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background-color var(--cp-fx), border-radius var(--cp-spring-fast);
+}
+.cp-mention:active {
+  border-radius: 16px;
 }
 .cp-mention:hover {
   background: rgba(var(--v-theme-on-surface), 0.08);
@@ -1201,7 +1231,8 @@ function bubblesForMessage(m: Message): string[] {
 /* Inspector */
 .cp-inspector {
   border: 0 !important;
-  border-radius: var(--cp-radius-lg) 0 0 var(--cp-radius-lg);
+  border-radius: var(--cp-radius-xl) 0 0 var(--cp-radius-xl);
+  --cp-ring: rgb(var(--v-theme-surface-container-low));
 }
 .cp-inspector__head {
   display: flex;
@@ -1231,8 +1262,11 @@ function bubblesForMessage(m: Message): string[] {
   gap: 12px;
   padding: 8px;
   margin: 0 -8px;
-  border-radius: var(--cp-radius-md);
-  transition: background 0.15s;
+  border-radius: var(--cp-radius-lg);
+  transition: background-color var(--cp-fx), border-radius var(--cp-spring);
+}
+.cp-member:hover {
+  border-radius: var(--cp-radius-xl);
 }
 .cp-member:hover {
   background: rgba(var(--v-theme-on-surface), 0.08);

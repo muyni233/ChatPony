@@ -103,13 +103,9 @@ async function startGroup() {
         <v-btn-toggle
           v-model="scope"
           mandatory
-          divided
-          variant="outlined"
-          rounded="pill"
-          class="cp-seg"
+          class="cp-connected cp-seg"
         >
           <v-btn v-for="opt in [{ v: 'all', t: '全部' }, { v: 'public', t: '官方' }, { v: 'private', t: '自设' }]" :key="opt.v" :value="opt.v">
-            <v-icon v-if="scope === opt.v" icon="mdi-check" size="18" start />
             {{ opt.t }}
           </v-btn>
         </v-btn-toggle>
@@ -126,6 +122,7 @@ async function startGroup() {
 
     <div v-if="allTags.length" class="cp-tagbar mb-6">
       <button
+        v-ripple
         type="button"
         class="cp-filter"
         :class="{ 'is-on': selectedTag === 'all' }"
@@ -155,9 +152,8 @@ async function startGroup() {
         :class="{ 'is-selected': groupSelection.includes(ch.id) }"
         :style="{ '--char': ch.color || '#245C50' }"
       >
-        <div class="cp-char-card__wash" />
         <div class="d-flex align-start ga-3 mb-3 position-relative">
-          <AvatarBadge :name="ch.name" :avatar="ch.avatar" :color="ch.color" :size="52" rounded="lg" />
+          <AvatarBadge :name="ch.name" :avatar="ch.avatar" :color="ch.color" :size="56" rounded="lg" class="cp-char-card__avatar" />
           <div class="flex-grow-1 min-width-0 pt-1">
             <div class="d-flex align-center ga-2">
               <span class="text-title-medium font-weight-bold text-truncate">{{ ch.name }}</span>
@@ -166,6 +162,7 @@ async function startGroup() {
             <div class="text-body-small cp-faint">@{{ ch.slug }}</div>
           </div>
           <button
+            v-ripple
             type="button"
             class="cp-pick"
             :class="{ 'is-on': groupSelection.includes(ch.id) }"
@@ -242,27 +239,6 @@ async function startGroup() {
 </template>
 
 <style scoped>
-/* M3 segmented button: outlined, full corners, selected = secondary container + check */
-.cp-seg {
-  height: 40px !important;
-  border-color: rgb(var(--v-theme-outline)) !important;
-}
-.cp-seg :deep(.v-btn) {
-  height: 40px !important;
-  min-width: 72px;
-  padding: 0 14px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: rgb(var(--v-theme-on-surface));
-  border-color: rgb(var(--v-theme-outline)) !important;
-}
-.cp-seg :deep(.v-btn--active) {
-  background: rgb(var(--v-theme-secondary-container));
-  color: rgb(var(--v-theme-on-secondary-container));
-}
-.cp-seg :deep(.v-btn--active > .v-btn__overlay) {
-  opacity: 0;
-}
 @media (max-width: 599px) {
   .cp-seg {
     flex: 1;
@@ -282,6 +258,24 @@ async function startGroup() {
   flex-wrap: wrap;
   gap: 8px;
 }
+/* On phones the chip set scrolls sideways in one row instead of stacking */
+@media (max-width: 599px) {
+  .cp-tagbar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    margin-inline: -20px;
+    padding-inline: 20px;
+    scrollbar-width: none;
+    -webkit-mask: linear-gradient(90deg, transparent, #000 20px, #000 calc(100% - 28px), transparent);
+    mask: linear-gradient(90deg, transparent, #000 20px, #000 calc(100% - 28px), transparent);
+  }
+  .cp-tagbar::-webkit-scrollbar {
+    display: none;
+  }
+  .cp-filter {
+    flex-shrink: 0;
+  }
+}
 .cp-filter {
   position: relative;
   display: inline-flex;
@@ -298,7 +292,11 @@ async function startGroup() {
   background: transparent;
   cursor: pointer;
   overflow: hidden;
-  transition: background-color 0.15s var(--cp-ease-std);
+  white-space: nowrap;
+  transition: background-color var(--cp-fx), padding var(--cp-spring-fast), border-radius var(--cp-spring-fast);
+}
+.cp-filter:active {
+  border-radius: 4px;
 }
 .cp-filter::after {
   content: '';
@@ -323,6 +321,7 @@ async function startGroup() {
 }
 
 .cp-char-card.is-selected {
+  border-radius: 28px;
   background: rgb(var(--v-theme-secondary-container));
   box-shadow: inset 0 0 0 2px rgb(var(--v-theme-primary));
 }
@@ -336,12 +335,15 @@ async function startGroup() {
   display: grid;
   place-items: center;
   border: 0;
-  border-radius: 999px;
+  border-radius: 20px;
   background: transparent;
   color: rgb(var(--v-theme-on-surface-variant));
   cursor: pointer;
   overflow: hidden;
-  transition: background-color 0.15s, color 0.15s;
+  transition: background-color var(--cp-fx), color var(--cp-fx), border-radius var(--cp-spring-fast);
+}
+.cp-pick:active {
+  border-radius: 10px;
 }
 .cp-pick::after {
   content: '';
@@ -354,7 +356,9 @@ async function startGroup() {
 .cp-pick:hover::after {
   opacity: 0.08;
 }
+/* M3 Expressive toggle: selected icon buttons turn from round to square */
 .cp-pick.is-on {
+  border-radius: 12px;
   color: rgb(var(--v-theme-on-primary));
   background: rgb(var(--v-theme-primary));
 }
@@ -368,11 +372,13 @@ async function startGroup() {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 8px 8px 16px;
-  border-radius: var(--cp-radius-lg);
+  padding: 8px 8px 8px 10px;
+  /* M3 Expressive floating toolbar */
+  border-radius: 999px;
   background: rgb(var(--v-theme-surface-container-high));
   box-shadow: var(--cp-shadow-lg);
   white-space: nowrap;
+  --cp-ring: rgb(var(--v-theme-surface-container-high));
 }
 @media (min-width: 960px) {
   .cp-dock {
@@ -386,11 +392,11 @@ async function startGroup() {
 }
 .cp-dock-enter-active,
 .cp-dock-leave-active {
-  transition: opacity 0.2s, transform 0.25s var(--cp-ease);
+  transition: opacity var(--cp-fx), transform var(--cp-spring);
 }
 .cp-dock-enter-from,
 .cp-dock-leave-to {
   opacity: 0;
-  transform: translate(-50%, 12px);
+  transform: translate(-50%, 24px) scale(0.9);
 }
 </style>

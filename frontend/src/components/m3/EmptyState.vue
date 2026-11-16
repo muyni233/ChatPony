@@ -10,7 +10,8 @@ defineProps<{
   <div class="cp-empty">
     <div class="d-flex flex-column align-center ga-3">
       <div v-if="icon" class="cp-empty__icon">
-        <v-icon :icon="icon" size="26" />
+        <span class="cp-empty__shape cp-shape cp-shape--cookie" />
+        <v-icon :icon="icon" size="30" />
       </div>
       <div v-else-if="$slots.icon">
         <slot name="icon" />
@@ -28,24 +29,34 @@ defineProps<{
 
 <style scoped>
 .cp-empty {
-  padding: 48px 24px;
+  padding: 56px 24px;
   text-align: center;
-  border-radius: var(--cp-radius-md);
+  border-radius: var(--cp-radius-xl);
   background: rgb(var(--v-theme-surface-container-low));
 }
+/* M3 Expressive: icon sits on a cookie shape that turns slowly */
 .cp-empty__icon {
-  width: 56px;
-  height: 56px;
-  border-radius: var(--cp-radius-lg);
+  position: relative;
+  width: 80px;
+  height: 80px;
   display: grid;
   place-items: center;
-  color: rgb(var(--v-theme-on-secondary-container));
-  background: rgb(var(--v-theme-secondary-container));
-  margin-bottom: 4px;
+  color: rgb(var(--v-theme-on-tertiary-container));
+  margin-bottom: 8px;
+}
+.cp-empty__shape {
+  position: absolute;
+  inset: 0;
+  background: rgb(var(--v-theme-tertiary-container));
+  animation: cp-spin 24s linear infinite;
+}
+.cp-empty__icon > .v-icon {
+  position: relative;
 }
 .cp-empty__title {
-  font-size: 1.125rem;
-  font-weight: 500;
+  font-size: 1.375rem;
+  line-height: 1.75rem;
+  font-weight: 600;
 }
 .cp-empty__desc {
   max-width: 420px;

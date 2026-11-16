@@ -163,21 +163,20 @@ async function runRecallPreview() {
 </script>
 
 <template>
-  <div class="cp-page" style="max-width:1180px">
+  <div class="cp-page">
     <header class="cp-page-header">
       <div>
         <h1 class="cp-page-title">长期记忆</h1>
         <p class="cp-page-subtitle">角色会记住与你相关的事实、偏好与约定，并在对话中自然想起。</p>
       </div>
       <div v-if="store.user" class="d-flex align-center ga-2">
-        <v-btn variant="tonal" height="36" prepend-icon="mdi-auto-fix" :loading="actionBusy" @click="runSummarize">
+        <v-btn variant="tonal" prepend-icon="mdi-auto-fix" :loading="actionBusy" @click="runSummarize">
           AI 整理
           <v-tooltip activator="parent" location="bottom">让 AI 立即从近期对话中整理记忆</v-tooltip>
         </v-btn>
         <v-btn
           color="primary"
           variant="flat"
-          height="36"
           prepend-icon="mdi-plus"
           @click="createForm.characterId = filterCharId !== 'all' ? filterCharId : (store.characters[0]?.id ?? ''); createOpen = true"
         >
@@ -185,7 +184,7 @@ async function runRecallPreview() {
         </v-btn>
         <v-menu location="bottom end">
           <template #activator="{ props: menuProps }">
-            <v-btn v-bind="menuProps" variant="text" height="36" width="36" min-width="36" aria-label="更多操作" :disabled="actionBusy">
+            <v-btn v-bind="menuProps" icon variant="text" aria-label="更多操作" :disabled="actionBusy">
               <v-icon icon="mdi-dots-horizontal" size="20" />
             </v-btn>
           </template>
@@ -203,107 +202,121 @@ async function runRecallPreview() {
     </EmptyState>
 
     <template v-else>
-      <v-card class="pa-4 mb-5">
-        <v-row density="compact">
-          <v-col cols="12" sm="6" md="3">
-            <v-select
-              v-model="filterCharId"
-              label="按角色筛选"
-              :items="[{ id: 'all', name: '全部角色' }, ...store.characters]"
-              item-title="name"
-              item-value="id"
-              density="compact"
-            />
-          </v-col>
-          <v-col cols="12" sm="6" md="3">
-            <v-select
-              v-model="filterStatus"
-              label="记忆状态"
-              :items="[
-                { value: 'active', title: '仅活跃记忆' },
-                { value: 'archived', title: '已归档' },
-                { value: 'all', title: '全部状态' },
-              ]"
-              density="compact"
-            />
-          </v-col>
-          <v-col cols="12" sm="6" md="3">
-            <v-select v-model="filterKind" label="记忆分类" :items="kindOptions" density="compact" />
-          </v-col>
-          <v-col cols="12" sm="6" md="3">
-            <v-text-field
-              v-model="search"
-              placeholder="搜索记忆内容…"
-              prepend-inner-icon="mdi-magnify"
-              density="compact"
-              @keydown.enter="loadMemories"
-            />
-          </v-col>
-        </v-row>
+      <div class="cp-mem-tools">
+        <v-text-field
+          v-model="search"
+          placeholder="搜索记忆内容，回车确认"
+          prepend-inner-icon="mdi-magnify"
+          density="compact"
+          clearable
+          hide-details
+          class="cp-mem-search"
+          @keydown.enter="loadMemories"
+          @click:clear="search = ''; loadMemories()"
+        />
+        <v-select
+          v-model="filterCharId"
+          :items="[{ id: 'all', name: '全部角色' }, ...store.characters]"
+          item-title="name"
+          item-value="id"
+          density="compact"
+          hide-details
+          class="cp-mem-char"
+          aria-label="按角色筛选"
+        />
+        <v-btn-toggle v-model="filterStatus" mandatory class="cp-connected" aria-label="记忆状态">
+          <v-btn value="active">活跃</v-btn>
+          <v-btn value="archived">已归档</v-btn>
+          <v-btn value="all">全部</v-btn>
+        </v-btn-toggle>
+      </div>
 
-        <div v-if="filterCharId !== 'all'" class="mt-4 pt-4" style="border-top:1px solid rgba(var(--v-border-color),var(--v-border-opacity))">
-          <div class="d-flex ga-2 align-center">
-            <v-text-field
-              v-model="recallQuery"
-              placeholder="输入一句模拟提问，测试 FTS5 + 向量 + MMR 混合召回..."
-              density="compact"
-              @keydown.enter="runRecallPreview"
-            />
-            <v-btn variant="tonal" color="primary" @click="runRecallPreview">召回预览</v-btn>
-          </div>
-          <v-list v-if="recallResults" density="compact" class="mt-2 bg-surface-light rounded-lg">
-            <v-list-subheader>召回命中 {{ recallResults.length }} 条</v-list-subheader>
-            <v-list-item v-for="r in recallResults" :key="r.id">
-              <template #prepend>
-                <v-chip size="x-small" color="primary" class="mr-2">{{ kindLabels[r.kind] }}</v-chip>
-              </template>
-              <v-list-item-title class="text-body-medium">{{ r.content }}</v-list-item-title>
-              <template #append>
-                <span class="text-body-small text-medium-emphasis">
-                  相关度 {{ r.relevance.toFixed(2) }} · {{ r.routes.join('+') }}
-                </span>
-              </template>
-            </v-list-item>
-          </v-list>
+      <div class="cp-kindbar mb-6" role="group" aria-label="记忆分类">
+        <button
+          v-for="opt in kindOptions"
+          :key="opt.value"
+          v-ripple
+          type="button"
+          class="cp-filter"
+          :class="{ 'is-on': filterKind === opt.value }"
+          @click="filterKind = opt.value"
+        >
+          <v-icon v-if="filterKind === opt.value" icon="mdi-check" size="18" />
+          {{ opt.value === 'all' ? '全部' : opt.title }}
+        </button>
+      </div>
+
+      <div v-if="filterCharId !== 'all'" class="cp-recall mb-6">
+        <div class="cp-recall__head">
+          <v-icon icon="mdi-radar" size="18" />
+          <span>召回预览</span>
+          <span class="cp-recall__hint">模拟一句提问，查看 FTS5 + 向量 + MMR 混合召回会命中哪些记忆</span>
         </div>
-      </v-card>
+        <div class="d-flex ga-2 align-center">
+          <v-text-field
+            v-model="recallQuery"
+            placeholder="例如：周末一起去做什么？"
+            density="compact"
+            hide-details
+            @keydown.enter="runRecallPreview"
+          />
+          <v-btn color="primary" variant="flat" height="40" @click="runRecallPreview">预览</v-btn>
+        </div>
+        <div v-if="recallResults" class="cp-recall__list">
+          <div class="cp-recall__count">命中 {{ recallResults.length }} 条</div>
+          <div v-for="r in recallResults" :key="r.id" class="cp-recall__row">
+            <span class="cp-tag">{{ kindLabels[r.kind] }}</span>
+            <span class="flex-grow-1 min-width-0">{{ r.content }}</span>
+            <span class="cp-recall__score">{{ r.relevance.toFixed(2) }} · {{ r.routes.join('+') }}</span>
+          </div>
+        </div>
+      </div>
 
-      <v-row v-if="items.length">
-        <v-col v-for="m in items" :key="m.id" cols="12" md="6" lg="4">
-          <v-card class="pa-4 fill-height d-flex flex-column ga-3">
-            <div class="d-flex align-center flex-wrap ga-2">
-              <AvatarBadge
-                v-if="m.characterName"
-                :name="m.characterName"
-                :avatar="m.characterAvatar"
-                :color="m.characterColor"
-                :size="28"
-                rounded="lg"
-              />
-              <strong class="text-body-medium">{{ m.characterName || '角色' }}</strong>
-              <v-chip size="x-small" color="secondary" variant="tonal">{{ kindLabels[m.kind] }}</v-chip>
-              <v-chip size="x-small" :color="m.source === 'manual' ? 'primary' : 'default'" variant="tonal">
-                {{ m.source === 'manual' ? '手写' : '自动' }}
-              </v-chip>
-              <v-chip v-if="m.status === 'archived'" size="x-small" color="warning" variant="tonal">已归档</v-chip>
-            </div>
+      <div v-if="items.length" class="cp-grid">
+        <article v-for="m in items" :key="m.id" class="cp-mem" :class="{ 'is-archived': m.status === 'archived' }">
+          <div class="d-flex align-center ga-2">
+            <AvatarBadge
+              v-if="m.characterName"
+              :name="m.characterName"
+              :avatar="m.characterAvatar"
+              :color="m.characterColor"
+              :size="28"
+              rounded="lg"
+            />
+            <strong class="text-body-medium text-truncate">{{ m.characterName || '角色' }}</strong>
+            <span class="cp-kind">{{ kindLabels[m.kind] }}</span>
+            <v-spacer />
+            <span class="cp-src" :title="m.source === 'manual' ? '手写记忆' : '对话中自动沉淀'">
+              <v-icon :icon="m.source === 'manual' ? 'mdi-pencil-outline' : 'mdi-auto-fix'" size="14" />
+              {{ m.source === 'manual' ? '手写' : '自动' }}
+            </span>
+          </div>
 
-            <div class="text-body-medium flex-grow-1" style="line-height:1.65">{{ m.content }}</div>
+          <p class="cp-mem__body">{{ m.content }}</p>
 
-            <div v-if="m.tags.length" class="d-flex flex-wrap ga-1">
-              <v-chip v-for="t in m.tags" :key="t" size="x-small">#{{ t }}</v-chip>
-            </div>
+          <div v-if="m.tags.length" class="d-flex flex-wrap ga-1">
+            <span v-for="t in m.tags" :key="t" class="cp-tag">#{{ t }}</span>
+          </div>
 
-            <div class="d-flex align-center justify-space-between text-body-small text-medium-emphasis">
-              <span>重要度 {{ Math.round(m.importance * 100) }}% · 召回 {{ m.accessCount }} 次 · {{ formatRelativeTime(m.updatedAt) }}</span>
-              <div>
-                <v-btn icon="mdi-archive-outline" variant="text" size="x-small" :title="m.status === 'active' ? '归档' : '恢复'" @click="toggleArchive(m)" />
-                <v-btn icon="mdi-delete-outline" variant="text" size="x-small" color="error" title="删除" @click="removeMemory(m.id)" />
-              </div>
-            </div>
-          </v-card>
-        </v-col>
-      </v-row>
+          <div class="cp-mem__foot">
+            <span class="cp-imp" :title="`重要度 ${Math.round(m.importance * 100)}%`">
+              <span class="cp-imp__bar"><span :style="{ width: `${Math.round(m.importance * 100)}%` }" /></span>
+              {{ Math.round(m.importance * 100) }}%
+            </span>
+            <span>召回 {{ m.accessCount }} 次</span>
+            <span>{{ formatRelativeTime(m.updatedAt) }}</span>
+            <v-spacer />
+            <v-btn icon variant="text" size="small" :aria-label="m.status === 'active' ? '归档' : '恢复'" @click="toggleArchive(m)">
+              <v-icon :icon="m.status === 'active' ? 'mdi-archive-arrow-down-outline' : 'mdi-archive-arrow-up-outline'" size="18" />
+              <v-tooltip activator="parent">{{ m.status === 'active' ? '归档' : '恢复' }}</v-tooltip>
+            </v-btn>
+            <v-btn icon variant="text" size="small" class="cp-del" aria-label="删除" @click="removeMemory(m.id)">
+              <v-icon icon="mdi-delete-outline" size="18" />
+              <v-tooltip activator="parent">删除</v-tooltip>
+            </v-btn>
+          </div>
+        </article>
+      </div>
 
       <EmptyState
         v-else-if="!loading"
@@ -313,10 +326,10 @@ async function runRecallPreview() {
       />
     </template>
 
-    <v-dialog v-model="createOpen" max-width="520">
+    <v-dialog v-model="createOpen" max-width="560">
       <v-card class="pa-6">
         <div class="d-flex align-center justify-space-between mb-4">
-          <h3 class="text-title-large font-weight-bold">添加手写长期记忆</h3>
+          <h3 class="text-headline-small">添加手写记忆</h3>
           <v-btn icon="mdi-close" variant="text" size="small" @click="createOpen = false" />
         </div>
         <v-form class="d-flex flex-column ga-3" @submit.prevent="submitCreate">
@@ -337,8 +350,10 @@ async function runRecallPreview() {
               />
             </v-col>
             <v-col cols="6">
-              <div class="text-body-small text-medium-emphasis">重要度：{{ Math.round(createForm.importance * 100) }}%</div>
-              <v-slider v-model="createForm.importance" :min="0.2" :max="1" :step="0.05" />
+              <div class="d-flex justify-space-between text-body-small text-medium-emphasis">
+                <span>重要度</span><strong class="text-high-emphasis">{{ Math.round(createForm.importance * 100) }}%</strong>
+              </div>
+              <v-slider v-model="createForm.importance" :min="0.2" :max="1" :step="0.05" color="primary" hide-details />
             </v-col>
           </v-row>
           <v-textarea v-model="createForm.content" label="记忆内容" rows="3" required maxlength="1000" placeholder="例如：用户喜欢在下雨天喝热苹果汁，讨厌香菜。" />
@@ -352,3 +367,217 @@ async function runRecallPreview() {
     </v-dialog>
   </div>
 </template>
+
+<style scoped>
+.cp-mem-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.cp-mem-search {
+  flex: 1 1 260px;
+}
+.cp-mem-char {
+  flex: 0 0 200px;
+}
+@media (max-width: 599px) {
+  .cp-mem-search {
+    flex-basis: 100%;
+  }
+  .cp-mem-char {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+}
+
+.cp-kindbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+@media (max-width: 599px) {
+  .cp-kindbar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    margin-inline: -20px;
+    padding-inline: 20px;
+    scrollbar-width: none;
+    -webkit-mask: linear-gradient(90deg, transparent, #000 20px, #000 calc(100% - 28px), transparent);
+    mask: linear-gradient(90deg, transparent, #000 20px, #000 calc(100% - 28px), transparent);
+  }
+  .cp-kindbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+.cp-filter {
+  position: relative;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 16px;
+  border-radius: var(--cp-radius-sm);
+  font-size: 0.875rem;
+  font-weight: 500;
+  white-space: nowrap;
+  color: rgb(var(--v-theme-on-surface-variant));
+  border: 1px solid rgb(var(--v-theme-outline-variant));
+  background: transparent;
+  cursor: pointer;
+  overflow: hidden;
+  transition: background-color var(--cp-fx), border-radius var(--cp-spring-fast);
+}
+.cp-filter::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.cp-filter:hover::after {
+  opacity: 0.08;
+}
+.cp-filter:active {
+  border-radius: 4px;
+}
+.cp-filter.is-on {
+  padding-left: 8px;
+  color: rgb(var(--v-theme-on-secondary-container));
+  background: rgb(var(--v-theme-secondary-container));
+  border-color: transparent;
+}
+
+.cp-recall {
+  padding: 18px 20px;
+  border-radius: var(--cp-radius-lg-inc);
+  background: rgb(var(--v-theme-surface-container));
+}
+.cp-recall__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  margin-bottom: 12px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: rgb(var(--v-theme-primary));
+}
+.cp-recall__hint {
+  font-weight: 400;
+  font-size: 0.75rem;
+  color: rgb(var(--v-theme-on-surface-variant));
+}
+.cp-recall__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 12px;
+}
+.cp-recall__count {
+  font-size: 0.75rem;
+  color: rgb(var(--v-theme-on-surface-variant));
+  margin-bottom: 6px;
+}
+.cp-recall__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  font-size: 0.875rem;
+  border-radius: 4px;
+  background: rgb(var(--v-theme-surface-container-lowest));
+}
+.cp-recall__row:first-of-type {
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+}
+.cp-recall__row:last-child {
+  border-bottom-left-radius: 14px;
+  border-bottom-right-radius: 14px;
+}
+.cp-recall__score {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: rgb(var(--v-theme-on-surface-variant));
+}
+
+.cp-mem {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 18px 10px;
+  border-radius: var(--cp-radius-lg);
+  background: rgb(var(--v-theme-surface-container-low));
+  transition: border-radius var(--cp-spring), background-color var(--cp-fx);
+}
+.cp-mem:hover {
+  border-radius: 24px;
+  background: rgb(var(--v-theme-surface-container));
+}
+.cp-mem.is-archived {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px rgb(var(--v-theme-outline-variant));
+}
+.cp-mem.is-archived .cp-mem__body {
+  color: rgb(var(--v-theme-on-surface-variant));
+}
+.cp-mem__body {
+  flex-grow: 1;
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.65;
+}
+.cp-kind {
+  flex-shrink: 0;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  padding: 2px 8px;
+  border-radius: var(--cp-radius-sm);
+  color: rgb(var(--v-theme-on-secondary-container));
+  background: rgb(var(--v-theme-secondary-container));
+}
+.cp-src {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  color: rgb(var(--v-theme-on-surface-variant));
+}
+.cp-mem__foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 -8px 0 0;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: rgb(var(--v-theme-on-surface-variant));
+}
+.cp-imp {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.cp-imp__bar {
+  width: 36px;
+  height: 4px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgb(var(--v-theme-secondary-container));
+}
+.cp-imp__bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: rgb(var(--v-theme-primary));
+}
+.cp-del:hover {
+  color: rgb(var(--v-theme-error));
+}
+</style>
