@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import EmptyState from '../components/m3/EmptyState.vue';
+import M3Loader from '../components/m3/M3Loader.vue';
 import { formatDateTime } from '../lib/display';
 import { useAppStore } from '../stores/app';
 
@@ -15,8 +16,17 @@ const store = useAppStore();
       </div>
     </div>
 
-    <div v-if="store.announcements.length" class="d-flex flex-column ga-4">
-      <article v-for="item in store.announcements" :key="item.id" class="cp-panel cp-ann" :class="{ 'is-pinned': item.pinned }">
+    <div v-if="store.loading" class="cp-loading-state">
+      <M3Loader :size="44" contained label="正在加载公告" />
+    </div>
+
+    <div v-else-if="store.announcements.length" class="d-flex flex-column ga-4">
+      <article
+        v-for="item in store.announcements"
+        :key="item.id"
+        class="cp-panel cp-ann"
+        :class="{ 'is-pinned': item.pinned }"
+      >
         <div class="cp-ann__meta">
           <span v-if="item.pinned" class="cp-ann__pin"><v-icon icon="mdi-pin" size="12" />置顶</span>
           <time :datetime="item.createdAt">{{ formatDateTime(item.createdAt) }}</time>
@@ -26,7 +36,12 @@ const store = useAppStore();
       </article>
     </div>
 
-    <EmptyState v-else icon="mdi-bullhorn-outline" title="暂无已发布的公告" description="当管理员发布版本更新或服务说明时，会显示在这里。" />
+    <EmptyState
+      v-else
+      icon="mdi-bullhorn-outline"
+      title="暂无已发布的公告"
+      description="当管理员发布版本更新或服务说明时，会显示在这里。"
+    />
   </div>
 </template>
 
@@ -63,10 +78,9 @@ const store = useAppStore();
 }
 .cp-ann__title {
   margin: 0 0 8px;
-  font-size: 1.375rem;
-  font-weight: 400;
+  font-size: 1.25rem;
+  font-weight: 600;
   line-height: 1.75rem;
-  letter-spacing: 0;
 }
 .cp-ann__body {
   font-size: 0.9375rem;
@@ -75,6 +89,8 @@ const store = useAppStore();
   color: rgb(var(--v-theme-on-surface));
 }
 @media (max-width: 599px) {
-  .cp-ann { padding: 18px; }
+  .cp-ann {
+    padding: 18px;
+  }
 }
 </style>

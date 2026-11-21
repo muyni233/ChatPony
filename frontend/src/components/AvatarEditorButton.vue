@@ -121,6 +121,12 @@ function onFileChange(e: Event) {
 .cp-avatar-edit__overlay.is-busy {
   opacity: 1;
 }
+@media (hover: none) {
+  .cp-avatar-edit__overlay {
+    opacity: 0.72;
+    background: rgba(0, 0, 0, 0.28);
+  }
+}
 .cp-avatar-edit__more {
   position: absolute;
   right: -6px;

@@ -10,7 +10,7 @@ import {
   getCachedConversation,
   setCachedConversation,
 } from '../lib/conversationCache';
-import { formatDateTime, messageBubbles, parseActionSegments } from '../lib/display';
+import { formatDateTime, messageBubbles, parseActionSegments, stripDisplaySymbols } from '../lib/display';
 import type { Attachment, Character, ConversationDetail, Message } from '../lib/types';
 import { useAppStore } from '../stores/app';
 
@@ -33,15 +33,23 @@ const copiedMsgId = ref<string | null>(null);
 const lightboxUrl = ref<string | null>(null);
 const inspectorOpen = ref(false);
 const draggingFile = ref(false);
+const pinnedToBottom = ref(true);
 const settingsForm = ref({ title: '', maxRounds: 4, summary: '' });
 const savingSettings = ref(false);
+const animatedIds = ref<Set<string>>(new Set());
 
-const messagesEndEl = ref<HTMLElement | null>(null);
+const scrollEl = ref<HTMLElement | null>(null);
+const composerInputEl = ref<HTMLTextAreaElement | null>(null);
 const fileInputEl = ref<HTMLInputElement | null>(null);
+
 let abortCtrl: AbortController | null = null;
+let loadSeq = 0;
+let dragDepth = 0;
+let scrollRaf = 0;
 
 onUnmounted(() => {
   abortCtrl?.abort();
+  if (scrollRaf) cancelAnimationFrame(scrollRaf);
 });
 
 const charMap = computed(() => {
@@ -57,35 +65,90 @@ const supportsImageInput = computed(() => {
   return (detail.value?.characters ?? []).some((c) => c.imageInput !== false);
 });
 
+const liveDisplayText = computed(() => {
+  if (!liveStream.value) return '';
+  return stripDisplaySymbols(liveStream.value.text, store.settings.hiddenSymbols);
+});
+
+const firstUserMsgIdx = computed(() => {
+  const list = detail.value?.messages ?? [];
+  return list.findIndex((m) => m.role === 'user');
+});
+
+function canRetryMessage(idx: number): boolean {
+  if (detail.value?.hasMore) return true;
+  const firstUser = firstUserMsgIdx.value;
+  return firstUser !== -1 && idx > firstUser;
+}
+
+function syncSettingsFromDetail(d: ConversationDetail) {
+  settingsForm.value = {
+    title: d.conversation.title,
+    maxRounds: d.conversation.maxRounds,
+    summary: d.conversation.summary,
+  };
+}
+
+function onScrollThread() {
+  const el = scrollEl.value;
+  if (!el) return;
+  const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+  pinnedToBottom.value = distFromBottom < 96;
+}
+
+function scrollToBottom(smooth = false) {
+  const el = scrollEl.value;
+  if (!el) return;
+  el.scrollTo({
+    top: el.scrollHeight,
+    behavior: smooth ? 'smooth' : 'auto',
+  });
+  pinnedToBottom.value = true;
+}
+
+function scheduleStreamScroll() {
+  if (!pinnedToBottom.value || scrollRaf) return;
+  scrollRaf = requestAnimationFrame(() => {
+    scrollRaf = 0;
+    if (pinnedToBottom.value) scrollToBottom(false);
+  });
+}
+
 async function loadConversation(id: string) {
+  const seq = ++loadSeq;
   if (!id || !store.user) {
+    detail.value = null;
     loading.value = false;
     return;
   }
+
   errorBanner.value = '';
+  animatedIds.value = new Set();
   const cached = getCachedConversation(id);
   if (cached) {
     detail.value = cached;
+    syncSettingsFromDetail(cached);
     loading.value = false;
+    await nextTick();
+    if (seq === loadSeq) scrollToBottom(false);
   } else {
+    detail.value = null;
     loading.value = true;
   }
 
   try {
     const fresh = await api.getConversation(id, { limit: 60 });
+    if (seq !== loadSeq) return;
     detail.value = fresh;
     setCachedConversation(id, fresh);
-    settingsForm.value = {
-      title: fresh.conversation.title,
-      maxRounds: fresh.conversation.maxRounds,
-      summary: fresh.conversation.summary,
-    };
+    syncSettingsFromDetail(fresh);
     await nextTick();
-    scrollToBottom();
+    if (seq === loadSeq) scrollToBottom(false);
   } catch (err) {
+    if (seq !== loadSeq) return;
     errorBanner.value = err instanceof ApiError ? err.message : '加载对话失败';
   } finally {
-    loading.value = false;
+    if (seq === loadSeq) loading.value = false;
   }
 }
 
@@ -97,28 +160,36 @@ watch(
     liveStream.value = null;
     statusText.value = '';
     pendingAttachments.value = [];
+    dragDepth = 0;
+    draggingFile.value = false;
     loadConversation(id);
   },
   { immediate: true }
 );
 
-function scrollToBottom() {
-  messagesEndEl.value?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-}
-
 async function loadEarlier() {
   if (!detail.value || !detail.value.hasMore || loadingMore.value) return;
   const firstId = detail.value.messages[0]?.id;
   if (!firstId) return;
+  const activeId = convId.value;
+  const el = scrollEl.value;
+  const prevHeight = el?.scrollHeight ?? 0;
+  const prevTop = el?.scrollTop ?? 0;
+
   loadingMore.value = true;
   try {
-    const older = await api.getConversation(convId.value, { limit: 60, before: firstId });
+    const older = await api.getConversation(activeId, { limit: 60, before: firstId });
+    if (activeId !== convId.value || !detail.value) return;
     detail.value = {
       ...detail.value,
       messages: [...older.messages, ...detail.value.messages],
       hasMore: older.hasMore,
     };
-    setCachedConversation(convId.value, detail.value);
+    setCachedConversation(activeId, detail.value);
+    await nextTick();
+    if (el) {
+      el.scrollTop = el.scrollHeight - prevHeight + prevTop;
+    }
   } catch (err) {
     store.notify(err instanceof ApiError ? err.message : '加载更早消息失败', 'error');
   } finally {
@@ -126,9 +197,20 @@ async function loadEarlier() {
   }
 }
 
+function resizeComposer() {
+  const el = composerInputEl.value;
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+}
+
 function insertMention(name: string) {
   const suffix = draft.value && !draft.value.endsWith(' ') ? ` @${name} ` : `@${name} `;
   draft.value += suffix;
+  nextTick(() => {
+    resizeComposer();
+    composerInputEl.value?.focus();
+  });
 }
 
 async function onPickFiles(e: Event) {
@@ -138,7 +220,29 @@ async function onPickFiles(e: Event) {
   if (files.length) await uploadFiles(files);
 }
 
+function hasDraggedFiles(e: DragEvent): boolean {
+  return Array.from(e.dataTransfer?.types ?? []).includes('Files');
+}
+
+function onDragEnter(e: DragEvent) {
+  if (!supportsImageInput.value || streaming.value || !hasDraggedFiles(e)) return;
+  dragDepth++;
+  draggingFile.value = true;
+}
+
+function onDragOver(e: DragEvent) {
+  if (!supportsImageInput.value || streaming.value || !hasDraggedFiles(e)) return;
+  e.preventDefault();
+}
+
+function onDragLeave(e: DragEvent) {
+  if (!hasDraggedFiles(e)) return;
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (dragDepth === 0) draggingFile.value = false;
+}
+
 function onDropFiles(e: DragEvent) {
+  dragDepth = 0;
   draggingFile.value = false;
   if (!supportsImageInput.value || streaming.value) return;
   const files = Array.from(e.dataTransfer?.files ?? []).filter((f) => f.type.startsWith('image/'));
@@ -166,10 +270,12 @@ async function uploadFiles(files: File[]) {
     store.notify(`单条消息最多附加 ${maxAllowed} 张图片`, 'error');
     return;
   }
+  const activeId = convId.value;
   uploadingImg.value = true;
   try {
     for (const f of files) {
-      const att = await api.uploadAttachment(convId.value, f);
+      const att = await api.uploadAttachment(activeId, f);
+      if (activeId !== convId.value) return;
       pendingAttachments.value.push(att);
     }
   } catch (err) {
@@ -189,12 +295,16 @@ async function handleSend(retryOfId?: string) {
   const attIds = retryOfId ? [] : pendingAttachments.value.map((a) => a.id);
   if (!retryOfId && !text && !attIds.length) return;
 
+  const activeId = convId.value;
   errorBanner.value = '';
   streaming.value = true;
+  pinnedToBottom.value = true;
   statusText.value = '正在准备回复...';
   const reqId = newRequestId();
   const savedDraft = draft.value;
   const savedAtts = [...pendingAttachments.value];
+  let userCommitted = false;
+  let removedRetryMsg = false;
 
   if (!retryOfId) {
     draft.value = '';
@@ -205,38 +315,46 @@ async function handleSend(retryOfId?: string) {
 
   try {
     await streamChatMessage(
-      convId.value,
+      activeId,
       { content: text, requestId: reqId, attachmentIds: attIds, retryOf: retryOfId },
       async (ev) => {
-        if (!detail.value) return;
+        if (!detail.value || activeId !== convId.value) return;
+        if (retryOfId && !removedRetryMsg && ev.type !== 'error') {
+          removedRetryMsg = true;
+          detail.value.messages = detail.value.messages.filter((m) => m.id !== retryOfId);
+        }
+
         if (ev.type === 'user') {
+          userCommitted = true;
           if (!detail.value.messages.some((m) => m.id === ev.message.id)) {
+            animatedIds.value.add(ev.message.id);
             detail.value.messages.push(ev.message);
           }
           await nextTick();
-          scrollToBottom();
+          scrollToBottom(true);
         } else if (ev.type === 'status') {
           statusText.value = ev.text;
         } else if (ev.type === 'stream-start') {
           statusText.value = '';
           liveStream.value = { streamId: ev.streamId, characterId: ev.characterId, text: '' };
           await nextTick();
-          scrollToBottom();
+          if (pinnedToBottom.value) scrollToBottom(false);
         } else if (ev.type === 'delta') {
           if (liveStream.value?.streamId === ev.streamId) {
             liveStream.value.text += ev.text;
           }
-          scrollToBottom();
+          scheduleStreamScroll();
         } else if (ev.type === 'stream-end') {
           liveStream.value = null;
         } else if (ev.type === 'message') {
           liveStream.value = null;
           if (!detail.value.messages.some((m) => m.id === ev.message.id)) {
+            if (!ev.streamId) animatedIds.value.add(ev.message.id);
             detail.value.messages.push(ev.message);
           }
-          setCachedConversation(convId.value, detail.value);
+          setCachedConversation(activeId, detail.value);
           await nextTick();
-          scrollToBottom();
+          if (pinnedToBottom.value) scrollToBottom(false);
         } else if (ev.type === 'error') {
           errorBanner.value = ev.message;
         } else if (ev.type === 'done') {
@@ -251,13 +369,13 @@ async function handleSend(retryOfId?: string) {
       },
       abortCtrl.signal
     );
-    if (retryOfId) {
-      await loadConversation(convId.value);
+    if (retryOfId && activeId === convId.value) {
+      await loadConversation(activeId);
     }
   } catch (err) {
     if ((err as Error)?.name !== 'AbortError') {
       errorBanner.value = err instanceof ApiError ? err.message : '发送消息时出现网络异常';
-      if (!retryOfId) {
+      if (!retryOfId && !userCommitted) {
         draft.value = savedDraft;
         pendingAttachments.value = savedAtts;
       }
@@ -278,6 +396,7 @@ function stopStreaming() {
 }
 
 function onKeydownComposer(e: KeyboardEvent) {
+  if (e.isComposing || e.keyCode === 229) return;
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
     handleSend();
@@ -295,10 +414,15 @@ async function onCopyMessage(m: Message) {
 }
 
 async function saveDialogueSettings() {
+  const trimmedTitle = settingsForm.value.title.trim();
+  if (!trimmedTitle) {
+    store.notify('会话标题不能为空', 'error');
+    return;
+  }
   savingSettings.value = true;
   try {
     const updated = await api.updateConversation(convId.value, {
-      title: settingsForm.value.title,
+      title: trimmedTitle,
       maxRounds: settingsForm.value.maxRounds,
       summary: settingsForm.value.summary,
     });
@@ -316,7 +440,13 @@ async function saveDialogueSettings() {
 }
 
 async function clearMessages() {
-  if (!window.confirm('确定清空当前会话的全部消息与摘要吗？此操作无法撤销。')) return;
+  const ok = await store.confirm({
+    title: '清空会话消息',
+    message: '确定清空当前会话的全部消息与前情摘要吗？此操作无法撤销。',
+    confirmText: '确认清空',
+    tone: 'error',
+  });
+  if (!ok) return;
   try {
     await api.clearConversationMessages(convId.value);
     await loadConversation(convId.value);
@@ -328,7 +458,13 @@ async function clearMessages() {
 }
 
 async function deleteConv() {
-  if (!window.confirm('确定删除整条会话记录吗？')) return;
+  const ok = await store.confirm({
+    title: '删除整个会话',
+    message: '确定永久删除这条会话记录吗？此操作无法撤销。',
+    confirmText: '确认删除',
+    tone: 'error',
+  });
+  if (!ok) return;
   try {
     await api.deleteConversation(convId.value);
     deleteCachedConversation(convId.value);
@@ -349,38 +485,38 @@ function isContinuation(idx: number): boolean {
   return Date.parse(cur.createdAt) - Date.parse(prev.createdAt) < 5 * 60 * 1000;
 }
 
-function autoGrow(e: Event) {
-  const el = e.target as HTMLTextAreaElement;
-  el.style.height = 'auto';
-  el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
-}
-
 watch(draft, (v) => {
   if (!v) {
-    nextTick(() => {
-      const el = document.querySelector<HTMLTextAreaElement>('.cp-composer-input');
-      if (el) el.style.height = 'auto';
-    });
+    nextTick(resizeComposer);
   }
 });
 
 function bubblesForMessage(m: Message): string[] {
-  return messageBubbles(
+  const bubbles = messageBubbles(
     m.content,
     m.role === 'assistant' ? store.settings.bubbleDelimiter : '',
     store.settings.hiddenSymbols
   );
+  if (!bubbles.length && m.content.trim()) {
+    return [m.content.trim()];
+  }
+  return bubbles;
 }
 </script>
 
 <template>
   <div
     class="cp-chat-root"
-    @dragover.prevent="draggingFile = true"
-    @dragleave.self="draggingFile = false"
+    @dragenter="onDragEnter"
+    @dragover="onDragOver"
+    @dragleave="onDragLeave"
     @drop.prevent="onDropFiles"
   >
-    <div v-if="!store.user" class="cp-page cp-page--narrow">
+    <div v-if="store.loading && !store.user" class="cp-chat-loading">
+      <M3Loader :size="48" contained label="正在载入" />
+    </div>
+
+    <div v-else-if="!store.user" class="cp-page cp-page--narrow">
       <EmptyState icon="mdi-message-text-outline" title="登录后开始对话" description="登录账号即可继续对话、管理群聊与长期记忆。">
         <template #action>
           <v-btn color="primary" @click="store.openAuth('login')">立即登录</v-btn>
@@ -438,7 +574,8 @@ function bubblesForMessage(m: Message): string[] {
       </header>
 
       <!-- Messages -->
-      <div class="cp-chat-scroll">
+      <div class="cp-chat-stage">
+      <div ref="scrollEl" class="cp-chat-scroll" @scroll.passive="onScrollThread">
         <div class="cp-chat-thread">
           <div v-if="detail.hasMore" class="text-center mb-2">
             <v-btn variant="text" size="small" :loading="loadingMore" prepend-icon="mdi-history" @click="loadEarlier">
@@ -454,10 +591,7 @@ function bubblesForMessage(m: Message): string[] {
             <div class="cp-summary__body">{{ detail.conversation.summary }}</div>
           </div>
 
-          <div
-            v-if="!detail.messages.length && !liveStream"
-            class="cp-chat-intro"
-          >
+          <div v-if="!detail.messages.length && !liveStream" class="cp-chat-intro">
             <div class="cp-stack mb-4">
               <AvatarBadge
                 v-for="c in detail.characters.slice(0, 4)"
@@ -479,7 +613,14 @@ function bubblesForMessage(m: Message): string[] {
             v-for="(msg, idx) in detail.messages"
             :key="msg.id"
             class="cp-msg"
-            :class="[`cp-msg--${msg.role === 'user' ? 'user' : 'ai'}`, { 'is-cont': isContinuation(idx) }]"
+            :class="[
+              `cp-msg--${msg.role === 'user' ? 'user' : 'ai'}`,
+              {
+                'is-cont': isContinuation(idx),
+                'is-last': idx === detail.messages.length - 1 && !liveStream,
+                'is-new': animatedIds.has(msg.id),
+              },
+            ]"
           >
             <!-- User -->
             <template v-if="msg.role === 'user'">
@@ -539,7 +680,14 @@ function bubblesForMessage(m: Message): string[] {
                     <v-icon :icon="copiedMsgId === msg.id ? 'mdi-check' : 'mdi-content-copy'" size="13" />
                     {{ copiedMsgId === msg.id ? '已复制' : '复制' }}
                   </button>
-                  <button v-ripple type="button" class="cp-msg__act" :disabled="streaming" @click="handleSend(msg.id)">
+                  <button
+                    v-if="canRetryMessage(idx)"
+                    v-ripple
+                    type="button"
+                    class="cp-msg__act"
+                    :disabled="streaming"
+                    @click="handleSend(msg.id)"
+                  >
                     <v-icon icon="mdi-refresh" size="13" />
                     重新生成
                   </button>
@@ -549,7 +697,7 @@ function bubblesForMessage(m: Message): string[] {
           </div>
 
           <!-- Live streaming reply -->
-          <div v-if="liveStream" class="cp-msg cp-msg--ai">
+          <div v-if="liveStream" class="cp-msg cp-msg--ai is-new">
             <div class="cp-msg__avatar">
               <AvatarBadge
                 :name="charMap.get(liveStream.characterId)?.name ?? '角色'"
@@ -561,10 +709,10 @@ function bubblesForMessage(m: Message): string[] {
             <div class="cp-msg__col align-start">
               <span class="cp-msg__name">{{ charMap.get(liveStream.characterId)?.name ?? '角色' }}</span>
               <div class="cp-bubble cp-bubble--ai">
-                <template v-if="liveStream.text">
+                <template v-if="liveDisplayText">
                   <template
                     v-for="(seg, sIdx) in parseActionSegments(
-                      liveStream.text,
+                      liveDisplayText,
                       store.settings.actionStyleEnabled,
                       store.settings.actionMarkers,
                       store.settings.actionHideMarkers
@@ -582,7 +730,7 @@ function bubblesForMessage(m: Message): string[] {
           </div>
 
           <div v-if="statusText" class="cp-status">
-            <M3Loader :size="22" :label="statusText" />
+            <M3Loader :size="20" :label="statusText" />
             {{ statusText }}
           </div>
 
@@ -592,14 +740,27 @@ function bubblesForMessage(m: Message): string[] {
             variant="tonal"
             density="compact"
             closable
-            class="mt-2"
+            class="mt-3"
             @click:close="errorBanner = ''"
           >
             {{ errorBanner }}
           </v-alert>
-
-          <div ref="messagesEndEl" style="height:4px" />
         </div>
+      </div>
+
+      <!-- Scroll to bottom button -->
+      <transition name="cp-jump">
+        <v-btn
+          v-if="!pinnedToBottom && detail.messages.length > 0"
+          icon="mdi-arrow-down"
+          size="small"
+          variant="flat"
+          color="surface-container-high"
+          class="cp-jump-bottom"
+          aria-label="回到底部"
+          @click="scrollToBottom(true)"
+        />
+      </transition>
       </div>
 
       <!-- Composer -->
@@ -614,7 +775,7 @@ function bubblesForMessage(m: Message): string[] {
             </div>
           </div>
 
-          <div class="cp-composer" :class="{ 'is-busy': streaming }">
+          <div class="cp-composer">
             <div v-if="detail.conversation.kind === 'group'" class="cp-mentions">
               <button
                 v-for="c in detail.characters"
@@ -639,11 +800,12 @@ function bubblesForMessage(m: Message): string[] {
             />
 
             <textarea
+              ref="composerInputEl"
               v-model="draft"
               class="cp-composer-input"
               rows="1"
               :placeholder="detail.conversation.kind === 'group' ? '发消息，或 @ 点名某位角色…' : `给 ${detail.characters[0]?.name ?? '角色'} 发消息…`"
-              @input="autoGrow"
+              @input="resizeComposer"
               @keydown="onKeydownComposer"
               @paste="onPasteComposer"
             />
@@ -716,9 +878,15 @@ function bubblesForMessage(m: Message): string[] {
                   <div class="text-title-small font-weight-bold">{{ c.name }}</div>
                   <div class="text-body-small cp-muted text-truncate">{{ c.description || `@${c.slug}` }}</div>
                 </div>
-                <v-btn to="/memories" icon variant="text" size="small" aria-label="查看记忆档案">
+                <v-btn
+                  :to="{ path: '/memories', query: { characterId: c.id } }"
+                  icon
+                  variant="text"
+                  size="small"
+                  aria-label="查看记忆档案"
+                >
                   <v-icon icon="mdi-brain" size="18" />
-                  <v-tooltip activator="parent">记忆档案</v-tooltip>
+                  <v-tooltip activator="parent">查看该角色的记忆档案</v-tooltip>
                 </v-btn>
               </div>
             </div>
@@ -726,7 +894,7 @@ function bubblesForMessage(m: Message): string[] {
             <div class="cp-inspector__label">设置</div>
             <v-form class="d-flex flex-column ga-4" @submit.prevent="saveDialogueSettings">
               <v-text-field v-model="settingsForm.title" label="会话标题" required maxlength="80" />
-              <div v-if="detail.conversation.kind === 'group'">
+              <div v-if="detail.conversation.kind === 'group' && store.settings.maxGroupRounds > 1">
                 <div class="d-flex justify-space-between text-body-small cp-muted mb-1">
                   <span>单轮最大响应数</span>
                   <strong>{{ settingsForm.maxRounds }}</strong>
@@ -761,7 +929,7 @@ function bubblesForMessage(m: Message): string[] {
     </template>
 
     <div v-else-if="loading" class="cp-chat-loading">
-      <M3Loader :size="52" contained label="正在载入对话" />
+      <M3Loader :size="48" contained label="正在载入对话" />
     </div>
 
     <div v-else class="cp-page cp-page--narrow">
@@ -819,20 +987,16 @@ function bubblesForMessage(m: Message): string[] {
 
 /* Header */
 .cp-chat-head {
-  position: sticky;
-  top: 0;
   z-index: 3;
   display: flex;
   align-items: center;
   gap: 12px;
-  min-height: 64px;
+  min-height: 62px;
   padding: 10px 16px 10px 20px;
-  /* M3 small top app bar */
   background: rgb(var(--v-theme-surface));
-  transition: background-color 0.2s var(--cp-ease-std);
+  border-bottom: 1px solid rgba(var(--v-border-color), 0.08);
 }
 .cp-chat-head__title {
-  /* M3 title-medium */
   font-size: 1rem;
   line-height: 1.5rem;
   font-weight: 600;
@@ -846,14 +1010,13 @@ function bubblesForMessage(m: Message): string[] {
 .cp-pill {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   flex-shrink: 0;
   font-size: 0.6875rem;
   font-weight: 500;
   letter-spacing: 0.03em;
   height: 22px;
   padding: 0 8px;
-  gap: 4px;
   border-radius: var(--cp-radius-sm);
   color: rgb(var(--v-theme-on-surface-variant));
   border: 1px solid rgb(var(--v-theme-outline-variant));
@@ -870,14 +1033,22 @@ function bubblesForMessage(m: Message): string[] {
 }
 
 /* Thread */
+.cp-chat-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
 .cp-chat-scroll {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
 }
 .cp-chat-thread {
   max-width: 780px;
   margin: 0 auto;
-  padding: 32px 18px 16px;
+  padding: 28px 18px 16px;
   display: flex;
   flex-direction: column;
 }
@@ -895,22 +1066,19 @@ function bubblesForMessage(m: Message): string[] {
   border-radius: var(--cp-radius-lg-inc);
   color: rgb(var(--v-theme-on-tertiary-container));
   background: rgb(var(--v-theme-tertiary-container));
-  border: 0;
 }
 .cp-summary__label {
   display: flex;
   align-items: center;
   gap: 6px;
   font-size: 0.75rem;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: 0.03em;
-  color: inherit;
   margin-bottom: 4px;
 }
 .cp-summary__body {
   font-size: 0.875rem;
   line-height: 1.65;
-  color: inherit;
   opacity: 0.9;
   white-space: pre-wrap;
 }
@@ -919,6 +1087,19 @@ function bubblesForMessage(m: Message): string[] {
   display: flex;
   gap: 12px;
   margin-top: 6px;
+}
+.cp-msg.is-new {
+  animation: cp-msg-in var(--cp-motion) both;
+}
+@keyframes cp-msg-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 .cp-msg.is-cont {
   margin-top: -4px;
@@ -963,18 +1144,11 @@ function bubblesForMessage(m: Message): string[] {
   white-space: pre-wrap;
   word-break: break-word;
   border-radius: 20px;
-  animation: cp-pop var(--cp-spring) both;
-  transform-origin: top left;
 }
-.cp-bubble--user {
-  transform-origin: top right;
-}
-/* M3: received bubbles on surface-container-high, sent on primary */
 .cp-bubble--ai {
   background: rgb(var(--v-theme-surface-container-high));
   border-top-left-radius: 6px;
 }
-/* Grouped bubbles share small inner corners, like one continuous voice */
 .cp-bubble--ai:has(+ .cp-bubble--ai),
 .cp-msg:has(+ .cp-msg--ai.is-cont) .cp-bubble--ai:nth-last-child(2) {
   border-bottom-left-radius: 6px;
@@ -1001,14 +1175,14 @@ function bubblesForMessage(m: Message): string[] {
   min-height: 18px;
   margin-top: -2px;
   font-size: 0.6875rem;
-  color: rgba(var(--v-theme-on-surface), 0.42);
+  color: rgba(var(--v-theme-on-surface), 0.45);
   padding: 0 2px;
   opacity: 0;
-  transition: opacity 0.15s;
+  transition: opacity var(--cp-fx-fast);
 }
 .cp-msg:hover .cp-msg__meta,
 .cp-msg:focus-within .cp-msg__meta,
-.cp-msg:last-of-type .cp-msg__meta {
+.cp-msg.is-last .cp-msg__meta {
   opacity: 1;
 }
 @media (hover: none) {
@@ -1022,15 +1196,16 @@ function bubblesForMessage(m: Message): string[] {
 }
 .cp-msg__act {
   border: 0;
+  background: transparent;
   display: inline-flex;
   align-items: center;
   gap: 3px;
   height: 22px;
   padding: 0 6px;
   border-radius: 6px;
-  color: rgba(var(--v-theme-on-surface), 0.55);
+  color: rgba(var(--v-theme-on-surface), 0.58);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: background-color var(--cp-fx-fast), color var(--cp-fx-fast);
 }
 .cp-msg__act:hover:not(:disabled) {
   background: rgba(var(--v-theme-on-surface), 0.06);
@@ -1053,28 +1228,24 @@ function bubblesForMessage(m: Message): string[] {
   height: 6px;
   border-radius: 50%;
   background: rgb(var(--v-theme-on-surface-variant));
-  animation: cp-blink 1.2s infinite cubic-bezier(0.38, 1.21, 0.22, 1) both;
+  animation: cp-blink 1.2s infinite var(--cp-ease-std) both;
 }
 .cp-typing i:nth-child(2) {
-  animation-delay: 0.15s;
+  animation-delay: 0.16s;
 }
 .cp-typing i:nth-child(3) {
-  animation-delay: 0.3s;
-}
-.cp-typing--sm i {
-  width: 4px;
-  height: 4px;
+  animation-delay: 0.32s;
 }
 @keyframes cp-blink {
   0%,
   80%,
   100% {
-    opacity: 0.25;
+    opacity: 0.28;
     transform: translateY(0);
   }
   40% {
     opacity: 1;
-    transform: translateY(-3px) scale(1.15);
+    transform: translateY(-2.5px);
   }
 }
 .cp-caret {
@@ -1096,9 +1267,28 @@ function bubblesForMessage(m: Message): string[] {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  margin: 16px 0 0 46px;
+  margin: 14px 0 0 46px;
   font-size: 0.8125rem;
-  color: rgba(var(--v-theme-on-surface), 0.55);
+  color: rgba(var(--v-theme-on-surface), 0.58);
+}
+
+/* Scroll-to-bottom button */
+.cp-jump-bottom {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 4;
+  box-shadow: var(--cp-shadow-md) !important;
+}
+.cp-jump-enter-active,
+.cp-jump-leave-active {
+  transition: opacity var(--cp-fx-fast), transform var(--cp-fx);
+}
+.cp-jump-enter-from,
+.cp-jump-leave-to {
+  opacity: 0;
+  transform: translate(-50%, 8px);
 }
 
 /* Composer */
@@ -1110,17 +1300,15 @@ function bubblesForMessage(m: Message): string[] {
   max-width: 780px;
   margin: 0 auto;
 }
-/* M3: composer as a surface-container-high field with extra-large corners */
 .cp-composer {
   background: rgb(var(--v-theme-surface-container-high));
   border-radius: var(--cp-radius-xl);
   padding: 12px 10px 10px 18px;
   box-shadow: inset 0 0 0 1px transparent;
-  transition: box-shadow var(--cp-fx), border-radius var(--cp-spring), background-color var(--cp-fx);
+  transition: box-shadow var(--cp-fx), background-color var(--cp-fx);
 }
 .cp-composer:focus-within {
-  border-radius: var(--cp-radius-lg-inc);
-  box-shadow: inset 0 0 0 2px rgb(var(--v-theme-primary));
+  box-shadow: inset 0 0 0 1.5px rgb(var(--v-theme-primary));
 }
 .cp-composer-input {
   display: block;
@@ -1157,17 +1345,13 @@ function bubblesForMessage(m: Message): string[] {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* M3 Expressive filled icon button: square at rest, round on hover, tighter when pressed */
 .cp-send {
-  width: 44px !important;
-  height: 44px !important;
-  border-radius: 14px !important;
-}
-.cp-send:not(.v-btn--disabled):hover {
-  border-radius: 22px !important;
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 50% !important;
 }
 .cp-send:not(.v-btn--disabled):active {
-  border-radius: 10px !important;
+  transform: scale(0.95);
 }
 .cp-send.v-btn--disabled {
   background: rgba(var(--v-theme-on-surface), 0.1) !important;
@@ -1187,9 +1371,8 @@ function bubblesForMessage(m: Message): string[] {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  /* M3 assist chip */
-  height: 32px;
-  padding: 0 14px 0 12px;
+  height: 30px;
+  padding: 0 12px 0 10px;
   border-radius: var(--cp-radius-sm);
   font-size: 0.8125rem;
   font-weight: 500;
@@ -1197,10 +1380,7 @@ function bubblesForMessage(m: Message): string[] {
   background: transparent;
   box-shadow: inset 0 0 0 1px rgb(var(--v-theme-outline-variant));
   cursor: pointer;
-  transition: background-color var(--cp-fx), border-radius var(--cp-spring-fast);
-}
-.cp-mention:active {
-  border-radius: 16px;
+  transition: background-color var(--cp-fx-fast);
 }
 .cp-mention:hover {
   background: rgba(var(--v-theme-on-surface), 0.08);
@@ -1224,7 +1404,7 @@ function bubblesForMessage(m: Message): string[] {
   place-items: center;
   border-radius: 50%;
   color: #fff;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgba(0, 0, 0, 0.72);
   cursor: pointer;
 }
 
@@ -1248,10 +1428,9 @@ function bubblesForMessage(m: Message): string[] {
 .cp-inspector__foot {
   padding: 16px 24px 24px;
 }
-/* M3 title-small section label */
 .cp-inspector__label {
   font-size: 0.875rem;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: 0.00625em;
   color: rgb(var(--v-theme-on-surface-variant));
   margin-bottom: 8px;
@@ -1262,14 +1441,11 @@ function bubblesForMessage(m: Message): string[] {
   gap: 12px;
   padding: 8px;
   margin: 0 -8px;
-  border-radius: var(--cp-radius-lg);
-  transition: background-color var(--cp-fx), border-radius var(--cp-spring);
+  border-radius: var(--cp-radius-md);
+  transition: background-color var(--cp-fx-fast);
 }
 .cp-member:hover {
-  border-radius: var(--cp-radius-xl);
-}
-.cp-member:hover {
-  background: rgba(var(--v-theme-on-surface), 0.08);
+  background: rgba(var(--v-theme-on-surface), 0.06);
 }
 .cp-btn-quiet {
   border-color: rgb(var(--v-theme-outline)) !important;

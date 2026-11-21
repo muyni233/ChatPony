@@ -65,20 +65,35 @@ export function parseActionSegments(
 
     for (const pair of pairs) {
       if (!pair.open || !pair.close) continue;
-      const openIdx = text.indexOf(pair.open, cursor);
-      if (openIdx === -1) continue;
-      const afterOpen = openIdx + pair.open.length;
-      const closeIdx = text.indexOf(pair.close, afterOpen);
-      if (closeIdx === -1) continue;
-      if (closeIdx === afterOpen) continue;
-      // Avoid matching single-asterisk across newlines when multiline narration differs
-      const inner = text.slice(afterOpen, closeIdx);
-      if (inner.includes('\n')) continue;
+      let searchFrom = cursor;
+      while (searchFrom < text.length) {
+        const openIdx = text.indexOf(pair.open, searchFrom);
+        if (openIdx === -1) break;
+        const afterOpen = openIdx + pair.open.length;
+        const closeIdx = text.indexOf(pair.close, afterOpen);
+        if (closeIdx === -1) break;
+        if (closeIdx === afterOpen) {
+          // Skip empty pairs (e.g. "**" when "*" is the marker) and keep scanning
+          searchFrom = closeIdx + pair.close.length;
+          continue;
+        }
+        // Avoid matching markers across newlines when multiline narration differs
+        const inner = text.slice(afterOpen, closeIdx);
+        if (inner.includes('\n')) {
+          searchFrom = afterOpen;
+          continue;
+        }
 
-      if (bestIdx === -1 || openIdx < bestIdx || (openIdx === bestIdx && pair.open.length > (bestPair?.open.length ?? 0))) {
-        bestIdx = openIdx;
-        bestPair = pair;
-        bestEnd = closeIdx + pair.close.length;
+        if (
+          bestIdx === -1 ||
+          openIdx < bestIdx ||
+          (openIdx === bestIdx && pair.open.length > (bestPair?.open.length ?? 0))
+        ) {
+          bestIdx = openIdx;
+          bestPair = pair;
+          bestEnd = closeIdx + pair.close.length;
+        }
+        break;
       }
     }
 
@@ -109,7 +124,9 @@ export function initialsOf(name: string): string {
   if (!trimmed) return 'P';
   const parts = trimmed.split(/\s+/);
   if (parts.length >= 2) {
-    return `${parts[0]![0] ?? ''}${parts[1]![0] ?? ''}`.toUpperCase();
+    const first = Array.from(parts[0] ?? '')[0] ?? '';
+    const second = Array.from(parts[1] ?? '')[0] ?? '';
+    return `${first}${second}`.toUpperCase();
   }
   return Array.from(trimmed).slice(0, 2).join('').toUpperCase();
 }

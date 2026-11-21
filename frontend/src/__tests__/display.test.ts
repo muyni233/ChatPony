@@ -32,9 +32,24 @@ describe('display helpers', () => {
     expect(hidden).toEqual([{ text: '微笑', action: true }]);
   });
 
-  it('formats character initials cleanly', () => {
+  it('continues matching markers after unclosed multiline or empty pairs', () => {
+    const multiline = parseActionSegments('*未闭合\n她*轻轻点头*', true, ['*'], false);
+    expect(multiline).toEqual([
+      { text: '*未闭合\n她', action: false },
+      { text: '*轻轻点头*', action: true },
+    ]);
+
+    const afterEmpty = parseActionSegments('**标题** 然后*微笑*', true, ['*'], false);
+    expect(afterEmpty).toEqual([
+      { text: '**标题** 然后', action: false },
+      { text: '*微笑*', action: true },
+    ]);
+  });
+
+  it('formats character initials cleanly including unicode surrogate pairs', () => {
     expect(initialsOf('Twilight Sparkle')).toBe('TS');
     expect(initialsOf('暮光闪闪')).toBe('暮光');
+    expect(initialsOf('🦄 Star')).toBe('🦄S');
   });
 });
 

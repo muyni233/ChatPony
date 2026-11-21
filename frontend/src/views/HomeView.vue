@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router';
 import QuotaCard from '../components/QuotaCard.vue';
 import AvatarBadge from '../components/m3/AvatarBadge.vue';
 import EmptyState from '../components/m3/EmptyState.vue';
+import M3Loader from '../components/m3/M3Loader.vue';
 import { api, ApiError } from '../lib/api';
 import { formatRelativeTime } from '../lib/display';
 import { useAppStore } from '../stores/app';
@@ -51,9 +52,15 @@ async function quickStartChat(characterId: string) {
 
 <template>
   <div class="cp-page">
+    <v-alert v-if="store.error" type="error" variant="tonal" class="mb-6">
+      <div class="d-flex align-center justify-space-between flex-wrap ga-2">
+        <span>{{ store.error }}</span>
+        <v-btn size="small" variant="tonal" color="error" @click="store.refresh()">重试</v-btn>
+      </div>
+    </v-alert>
+
     <!-- Hero -->
     <header class="cp-hero cp-rise">
-      <span class="cp-hero__shape cp-hero__shape--a cp-shape cp-shape--cookie12" aria-hidden="true" />
       <div class="cp-hero__text">
         <div class="cp-eyebrow">
           <v-icon icon="mdi-creation" size="14" />
@@ -70,14 +77,14 @@ async function quickStartChat(characterId: string) {
           <v-btn
             color="primary"
             variant="flat"
-            height="52"
+            height="48"
             class="cp-btn-lg"
             prepend-icon="mdi-plus"
             @click="store.user ? store.openNewChat() : store.openAuth('login')"
           >
             {{ store.user ? '发起新对话' : '登录开始' }}
           </v-btn>
-          <v-btn variant="outlined" height="52" to="/characters" class="cp-btn-lg cp-btn-ghost">浏览角色</v-btn>
+          <v-btn variant="outlined" height="48" to="/characters" class="cp-btn-lg cp-btn-ghost">浏览角色</v-btn>
         </div>
       </div>
 
@@ -97,148 +104,148 @@ async function quickStartChat(characterId: string) {
       </div>
     </header>
 
-    <!-- Recent Conversations -->
-    <section v-if="store.user && recentConversations.length" class="cp-section">
-      <div class="cp-section-head">
-        <h2 class="cp-section-title">继续对话</h2>
-        <router-link to="/conversations" class="cp-section-link">
-          全部 {{ store.conversations.length }}
-          <v-icon icon="mdi-chevron-right" size="16" />
-        </router-link>
-      </div>
-      <div class="cp-grid">
-        <v-card
-          v-for="conv in recentConversations"
-          :key="conv.id"
-          :to="`/chat/${conv.id}`"
-          class="cp-conv-card"
-        >
-          <div class="d-flex align-center ga-3 mb-3">
-            <div class="cp-stack">
-              <AvatarBadge
-                v-for="cid in conv.characterIds.slice(0, 3)"
-                :key="cid"
-                :name="charById.get(cid)?.name ?? '角'"
-                :avatar="charById.get(cid)?.avatar"
-                :color="charById.get(cid)?.color"
-                :size="32"
-                ring
-              />
-            </div>
-            <div class="flex-grow-1 min-width-0">
-              <div class="text-title-small font-weight-bold text-truncate">{{ conv.title }}</div>
-              <div class="text-body-small cp-faint">
-                {{ conv.kind === 'group' ? `群聊 · ${conv.characterIds.length} 位角色` : '私聊' }}
-              </div>
-            </div>
-            <span class="text-body-small cp-faint flex-shrink-0">{{ formatRelativeTime(conv.updatedAt) }}</span>
-          </div>
-          <div class="cp-conv-card__preview line-clamp-2">
-            {{ conv.lastMessage || '点击继续对话' }}
-          </div>
-        </v-card>
-      </div>
-    </section>
+    <div v-if="store.loading" class="cp-loading-state">
+      <M3Loader :size="44" contained label="正在加载首页内容" />
+    </div>
 
-    <!-- Characters -->
-    <section class="cp-section">
-      <div class="cp-section-head">
-        <h2 class="cp-section-title">角色</h2>
-        <router-link v-if="store.characters.length" to="/characters" class="cp-section-link">
-          全部 {{ store.characters.length }}
-          <v-icon icon="mdi-chevron-right" size="16" />
-        </router-link>
-      </div>
-
-      <div v-if="featuredCharacters.length" class="cp-grid">
-        <div
-          v-for="ch in featuredCharacters"
-          :key="ch.id"
-          class="cp-char-card"
-          :style="{ '--char': ch.color || '#245C50' }"
-        >
-          <div class="d-flex align-start ga-3 mb-3 position-relative">
-            <AvatarBadge :name="ch.name" :avatar="ch.avatar" :color="ch.color" :size="52" rounded="lg" class="cp-char-card__avatar" />
-            <div class="flex-grow-1 min-width-0 pt-1">
-              <div class="d-flex align-center ga-2">
-                <span class="text-title-medium font-weight-bold text-truncate">{{ ch.name }}</span>
-                <v-chip v-if="ch.ownerId" size="x-small" color="tertiary" variant="tonal">自设</v-chip>
-              </div>
-              <div class="text-body-small cp-faint">@{{ ch.slug }}</div>
-            </div>
-          </div>
-
-          <p class="cp-char-card__desc line-clamp-2">
-            {{ ch.description || ch.greeting || '暂无角色介绍' }}
-          </p>
-
-          <div class="d-flex align-center justify-space-between ga-2 mt-auto position-relative">
-            <div class="d-flex flex-wrap ga-1 min-width-0">
-              <span v-for="t in ch.tags.slice(0, 3)" :key="t" class="cp-tag">{{ t }}</span>
-            </div>
-            <v-btn
-              color="primary"
-              variant="tonal"
-              size="small"
-              append-icon="mdi-arrow-right"
-              :loading="startingId === ch.id"
-              @click="quickStartChat(ch.id)"
-            >
-              聊天
-            </v-btn>
-          </div>
-        </div>
-      </div>
-
-      <EmptyState
-        v-else
-        icon="mdi-account-multiple-outline"
-        title="暂无可用角色"
-        description="管理员可在后台创建公开角色，登录后也可在「自设角色」创建你的私人角色。"
-      >
-        <template #action>
-          <v-btn v-if="store.isAdmin" color="primary" to="/admin">前往管理后台</v-btn>
-          <v-btn v-else-if="store.user" color="primary" to="/my-characters">创建自设角色</v-btn>
-          <v-btn v-else color="primary" @click="store.openAuth('login')">登录账号</v-btn>
-        </template>
-      </EmptyState>
-    </section>
-
-    <div class="cp-home-bottom">
-      <!-- Announcements -->
-      <section v-if="recentAnnouncements.length" class="cp-section mb-0">
+    <template v-else>
+      <!-- Recent Conversations -->
+      <section v-if="store.user && recentConversations.length" class="cp-section">
         <div class="cp-section-head">
-          <h2 class="cp-section-title">公告</h2>
-          <router-link to="/announcements" class="cp-section-link">
-            查看全部
+          <h2 class="cp-section-title">继续对话</h2>
+          <router-link to="/conversations" class="cp-section-link">
+            全部 {{ store.conversations.length }}
             <v-icon icon="mdi-chevron-right" size="16" />
           </router-link>
         </div>
-        <div class="cp-seglist">
-          <div v-for="a in recentAnnouncements" :key="a.id" class="cp-ann">
-            <div class="d-flex align-center ga-2 mb-1">
-              <span v-if="a.pinned" class="cp-pin"><v-icon icon="mdi-pin" size="12" />置顶</span>
-              <span class="text-title-small font-weight-bold text-truncate">{{ a.title }}</span>
-              <span class="text-body-small cp-faint ml-auto flex-shrink-0">{{ formatRelativeTime(a.createdAt) }}</span>
+        <div class="cp-grid">
+          <v-card
+            v-for="conv in recentConversations"
+            :key="conv.id"
+            :to="`/chat/${conv.id}`"
+            class="cp-conv-card"
+          >
+            <div class="d-flex align-center ga-3 mb-3">
+              <div class="cp-stack">
+                <AvatarBadge
+                  v-for="cid in conv.characterIds.slice(0, 3)"
+                  :key="cid"
+                  :name="charById.get(cid)?.name ?? '角'"
+                  :avatar="charById.get(cid)?.avatar"
+                  :color="charById.get(cid)?.color"
+                  :size="32"
+                  ring
+                />
+              </div>
+              <div class="flex-grow-1 min-width-0">
+                <div class="text-title-small font-weight-bold text-truncate">{{ conv.title }}</div>
+                <div class="text-body-small cp-faint">
+                  {{ conv.kind === 'group' ? `群聊 · ${conv.characterIds.length} 位角色` : '私聊' }}
+                </div>
+              </div>
+              <span class="text-body-small cp-faint flex-shrink-0">{{ formatRelativeTime(conv.updatedAt) }}</span>
             </div>
-            <div class="text-body-medium cp-muted line-clamp-2">{{ a.content }}</div>
-          </div>
+            <div class="cp-conv-card__preview line-clamp-2">
+              {{ conv.lastMessage || '点击继续对话' }}
+            </div>
+          </v-card>
         </div>
       </section>
 
-      <!-- Quota -->
-      <section v-if="store.quota" class="cp-section mb-0">
+      <!-- Characters -->
+      <section class="cp-section">
         <div class="cp-section-head">
-          <h2 class="cp-section-title">额度</h2>
+          <h2 class="cp-section-title">角色</h2>
+          <router-link v-if="store.characters.length" to="/characters" class="cp-section-link">
+            全部 {{ store.characters.length }}
+            <v-icon icon="mdi-chevron-right" size="16" />
+          </router-link>
         </div>
-        <QuotaCard :quota="store.quota" />
+
+        <div v-if="featuredCharacters.length" class="cp-grid">
+          <div v-for="ch in featuredCharacters" :key="ch.id" class="cp-char-card">
+            <div class="d-flex align-start ga-3 mb-3">
+              <AvatarBadge :name="ch.name" :avatar="ch.avatar" :color="ch.color" :size="52" rounded="lg" class="cp-char-card__avatar" />
+              <div class="flex-grow-1 min-width-0 pt-1">
+                <div class="d-flex align-center ga-2">
+                  <span class="text-title-medium font-weight-bold text-truncate">{{ ch.name }}</span>
+                  <v-chip v-if="ch.ownerId" size="x-small" color="tertiary" variant="tonal">自设</v-chip>
+                </div>
+                <div class="text-body-small cp-faint">@{{ ch.slug }}</div>
+              </div>
+            </div>
+
+            <p class="cp-char-card__desc line-clamp-2">
+              {{ ch.description || ch.greeting || '暂无角色介绍' }}
+            </p>
+
+            <div class="d-flex align-center justify-space-between ga-2 mt-auto">
+              <div class="d-flex flex-wrap ga-1 min-width-0">
+                <span v-for="t in ch.tags.slice(0, 3)" :key="t" class="cp-tag">{{ t }}</span>
+              </div>
+              <v-btn
+                color="primary"
+                variant="tonal"
+                size="small"
+                append-icon="mdi-arrow-right"
+                :loading="startingId === ch.id"
+                @click="quickStartChat(ch.id)"
+              >
+                聊天
+              </v-btn>
+            </div>
+          </div>
+        </div>
+
+        <EmptyState
+          v-else
+          icon="mdi-account-multiple-outline"
+          title="暂无可用角色"
+          description="管理员可在后台创建公开角色，登录后也可在「自设角色」创建你的私人角色。"
+        >
+          <template #action>
+            <v-btn v-if="store.isAdmin" color="primary" to="/admin">前往管理后台</v-btn>
+            <v-btn v-else-if="store.user" color="primary" to="/my-characters">创建自设角色</v-btn>
+            <v-btn v-else color="primary" @click="store.openAuth('login')">登录账号</v-btn>
+          </template>
+        </EmptyState>
       </section>
-    </div>
+
+      <div v-if="recentAnnouncements.length || store.quota" class="cp-home-bottom">
+        <!-- Announcements -->
+        <section v-if="recentAnnouncements.length" class="cp-section mb-0">
+          <div class="cp-section-head">
+            <h2 class="cp-section-title">公告</h2>
+            <router-link to="/announcements" class="cp-section-link">
+              查看全部
+              <v-icon icon="mdi-chevron-right" size="16" />
+            </router-link>
+          </div>
+          <div class="cp-seglist">
+            <div v-for="a in recentAnnouncements" :key="a.id" class="cp-ann">
+              <div class="d-flex align-center ga-2 mb-1">
+                <span v-if="a.pinned" class="cp-pin"><v-icon icon="mdi-pin" size="12" />置顶</span>
+                <span class="text-title-small font-weight-bold text-truncate">{{ a.title }}</span>
+                <span class="text-body-small cp-faint ml-auto flex-shrink-0">{{ formatRelativeTime(a.createdAt) }}</span>
+              </div>
+              <div class="text-body-medium cp-muted line-clamp-2">{{ a.content }}</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Quota -->
+        <section v-if="store.quota" class="cp-section mb-0">
+          <div class="cp-section-head">
+            <h2 class="cp-section-title">额度</h2>
+          </div>
+          <QuotaCard :quota="store.quota" />
+        </section>
+      </div>
+    </template>
   </div>
 </template>
 
 <style scoped>
-/* M3: hero as a primary-container surface, extra-large corners */
 .cp-hero {
   position: relative;
   display: flex;
@@ -246,83 +253,61 @@ async function quickStartChat(characterId: string) {
   align-items: flex-end;
   justify-content: space-between;
   gap: 28px;
-  padding: 44px 40px 40px;
-  margin-bottom: 48px;
+  padding: 40px 36px 36px;
+  margin-bottom: 44px;
   border-radius: var(--cp-radius-xl-inc);
   overflow: hidden;
   color: rgb(var(--v-theme-on-primary-container));
-  background: rgb(var(--v-theme-primary-container));
-}
-.cp-hero__shape {
-  position: absolute;
-  pointer-events: none;
-}
-/* M3 Expressive: oversized library shapes, turning slowly behind the content */
-.cp-hero__shape--a {
-  right: -96px;
-  top: -150px;
-  width: 400px;
-  height: 400px;
-  background: rgba(var(--v-theme-primary), 0.1);
-  animation: cp-spin 60s linear infinite;
-}
-.cp-hero > :not(.cp-hero__shape) {
-  position: relative;
+  background:
+    radial-gradient(circle at 92% 14%, rgba(var(--v-theme-primary), 0.14), transparent 52%),
+    rgb(var(--v-theme-primary-container));
 }
 .cp-hero .cp-eyebrow {
   color: rgb(var(--v-theme-on-primary-container));
-  text-transform: none;
-  letter-spacing: 0.00625em;
   font-weight: 500;
   font-size: 0.875rem;
 }
 .cp-hero .cp-page-subtitle {
-  color: rgba(var(--v-theme-on-primary-container), 0.8);
+  color: rgba(var(--v-theme-on-primary-container), 0.82);
 }
 .cp-hero__text {
   max-width: 560px;
 }
-/* M3 Expressive: emphasized display-small → display-medium */
 .cp-hero__title {
   font-size: 1.875rem;
   line-height: 2.375rem;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
   margin: 0;
   text-wrap: balance;
 }
 @media (min-width: 600px) {
   .cp-hero__title {
-    font-size: 2.5rem;
-    line-height: 3.125rem;
+    font-size: 2.375rem;
+    line-height: 3rem;
   }
 }
 .cp-btn-lg {
-  font-size: 1rem !important;
-  padding-inline: 24px !important;
+  font-size: 0.9375rem !important;
+  padding-inline: 22px !important;
 }
 .cp-hero__stats {
   display: flex;
   gap: 8px;
 }
 .cp-stat {
-  min-width: 104px;
+  min-width: 100px;
   padding: 14px 18px 16px;
   border-radius: var(--cp-radius-lg-inc);
-  background: rgba(var(--v-theme-surface-container-lowest), 0.62);
-  transition: border-radius var(--cp-spring), transform var(--cp-spring);
+  background: rgba(var(--v-theme-surface-container-lowest), 0.64);
 }
-.v-theme--dark .cp-stat {
+:global(.v-theme--dark) .cp-stat {
   background: rgba(var(--v-theme-on-primary-container), 0.1);
 }
-.cp-stat:hover {
-  border-radius: 32px;
-  transform: translateY(-2px);
-}
 .cp-stat__num {
-  font-size: 2rem;
+  font-size: 1.875rem;
   font-weight: 600;
-  line-height: 2.5rem;
+  line-height: 2.375rem;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
@@ -330,20 +315,14 @@ async function quickStartChat(characterId: string) {
   font-size: 0.75rem;
   font-weight: 500;
   letter-spacing: 0.03em;
-  color: rgba(var(--v-theme-on-primary-container), 0.75);
+  color: rgba(var(--v-theme-on-primary-container), 0.76);
 }
 @media (max-width: 599px) {
   .cp-hero {
     padding: 28px 22px 24px;
     border-radius: var(--cp-radius-xl);
   }
-  .cp-hero__shape--a {
-    right: -140px;
-    top: -170px;
-    width: 340px;
-    height: 340px;
-  }
-    .cp-hero__stats {
+  .cp-hero__stats {
     width: 100%;
   }
   .cp-stat {

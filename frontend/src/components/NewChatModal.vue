@@ -28,7 +28,8 @@ watch(
     if (!isOpen) return;
     errorMsg.value = '';
     title.value = '';
-    maxRounds.value = Math.min(4, store.settings.maxGroupRounds);
+    scope.value = 'all';
+    maxRounds.value = Math.min(4, Math.max(1, store.settings.maxGroupRounds));
     selectedIds.value = store.newChatPreselectId ? [store.newChatPreselectId] : [];
   }
 );
@@ -100,29 +101,33 @@ async function handleCreate() {
         </v-chip>
       </div>
 
-      <v-row density="compact" style="max-height:300px;overflow-y:auto">
+      <v-row v-if="filteredChars.length" density="compact" style="max-height:300px;overflow-y:auto">
         <v-col v-for="ch in filteredChars" :key="ch.id" cols="12" sm="6">
           <v-card
             :variant="selectedIds.includes(ch.id) ? 'tonal' : 'flat'"
-            :color="selectedIds.includes(ch.id) ? 'primary' : 'surface-light'"
+            :color="selectedIds.includes(ch.id) ? 'primary' : 'surface-container'"
+            rounded="lg"
             class="pa-3 d-flex align-center ga-3 cursor-pointer"
             @click="toggleChar(ch.id)"
           >
             <AvatarBadge :name="ch.name" :avatar="ch.avatar" :color="ch.color" :size="42" rounded="lg" />
-            <div class="flex-grow-1" style="min-width:0">
+            <div class="flex-grow-1 min-width-0">
               <div class="font-weight-bold text-body-medium d-flex align-center ga-1">
                 <span class="text-truncate">{{ ch.name }}</span>
-                <v-chip v-if="ch.ownerId" size="x-small" color="tertiary">自设</v-chip>
+                <v-chip v-if="ch.ownerId" size="x-small" color="tertiary" variant="tonal">自设</v-chip>
               </div>
-              <div class="text-body-small text-medium-emphasis text-truncate">{{ ch.description || ch.slug }}</div>
+              <div class="text-body-small text-medium-emphasis text-truncate">{{ ch.description || `@${ch.slug}` }}</div>
             </div>
             <v-icon :icon="selectedIds.includes(ch.id) ? 'mdi-check-circle' : 'mdi-circle-outline'" />
           </v-card>
         </v-col>
       </v-row>
+      <div v-else class="cp-newchat-empty">
+        {{ scope === 'private' ? '还没有创建自设角色，可先在「自设角色」页创建。' : '当前分类暂无可用角色。' }}
+      </div>
 
       <v-row density="compact" class="mt-4">
-        <v-col cols="12" :md="selectedIds.length > 1 ? 6 : 12">
+        <v-col cols="12" :md="selectedIds.length > 1 && store.settings.maxGroupRounds > 1 ? 6 : 12">
           <v-text-field
             v-model="title"
             label="会话标题（可选）"
@@ -130,9 +135,9 @@ async function handleCreate() {
             placeholder="留空则按角色名称自动生成"
           />
         </v-col>
-        <v-col v-if="selectedIds.length > 1" cols="12" md="6">
+        <v-col v-if="selectedIds.length > 1 && store.settings.maxGroupRounds > 1" cols="12" md="6">
           <div class="text-body-small text-medium-emphasis mb-1">群聊最大连续响应轮数：{{ maxRounds }}</div>
-          <v-slider v-model="maxRounds" :min="1" :max="store.settings.maxGroupRounds" :step="1" thumb-label />
+          <v-slider v-model="maxRounds" :min="1" :max="store.settings.maxGroupRounds" :step="1" color="primary" thumb-label hide-details />
         </v-col>
       </v-row>
 
@@ -155,3 +160,14 @@ async function handleCreate() {
     </v-card>
   </v-dialog>
 </template>
+
+<style scoped>
+.cp-newchat-empty {
+  padding: 36px 16px;
+  text-align: center;
+  border-radius: var(--cp-radius-lg);
+  background: rgb(var(--v-theme-surface-container));
+  color: rgb(var(--v-theme-on-surface-variant));
+  font-size: 0.875rem;
+}
+</style>

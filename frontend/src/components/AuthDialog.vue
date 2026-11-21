@@ -8,6 +8,7 @@ const store = useAppStore();
 const mode = ref<'login' | 'register'>('login');
 const email = ref('');
 const password = ref('');
+const showPassword = ref(false);
 const name = ref('');
 const code = ref('');
 const errorMsg = ref('');
@@ -40,9 +41,12 @@ const open = computed({
 watch(
   () => store.authDialogMode,
   async (next) => {
+    password.value = '';
+    code.value = '';
+    showPassword.value = false;
+    errorMsg.value = '';
     if (!next) return;
     mode.value = next;
-    errorMsg.value = '';
     try {
       policy.value = await api.registrationPolicy();
     } catch {
@@ -62,14 +66,15 @@ const domainHint = computed(() => {
 });
 
 async function handleSendCode() {
-  if (!email.value.trim()) {
+  const trimmedEmail = email.value.trim();
+  if (!trimmedEmail) {
     errorMsg.value = '请先输入电子邮箱地址';
     return;
   }
   errorMsg.value = '';
   codeBusy.value = true;
   try {
-    await api.sendCode(email.value.trim());
+    await api.sendCode(trimmedEmail);
     store.notify('验证码已发送到您的邮箱', 'success');
     cooldown.value = 60;
     stopTimer();
@@ -86,19 +91,42 @@ async function handleSendCode() {
 
 async function handleSubmit() {
   errorMsg.value = '';
+  const trimmedEmail = email.value.trim();
+  const trimmedName = name.value.trim();
+  if (!trimmedEmail) {
+    errorMsg.value = '请输入电子邮箱';
+    return;
+  }
+  if (mode.value === 'register' && !trimmedName) {
+    errorMsg.value = '请输入昵称';
+    return;
+  }
+  if (!password.value) {
+    errorMsg.value = '请输入密码';
+    return;
+  }
+  if (mode.value === 'register' && password.value.length < 8) {
+    errorMsg.value = '密码长度至少需要 8 位字符';
+    return;
+  }
+  if (mode.value === 'register' && policy.value?.requireEmailVerification && !code.value.trim()) {
+    errorMsg.value = '请输入邮箱验证码';
+    return;
+  }
+
   busy.value = true;
   try {
     if (mode.value === 'login') {
-      await api.login(email.value.trim(), password.value);
+      await api.login(trimmedEmail, password.value);
       await store.refresh();
       store.closeAuth();
       store.notify('欢迎回到 ChatPony', 'success');
     } else {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai';
       await api.register({
-        email: email.value.trim(),
+        email: trimmedEmail,
         password: password.value,
-        name: name.value.trim(),
+        name: trimmedName,
         timezone: tz,
         verificationCode: code.value.trim() || undefined,
       });
@@ -115,7 +143,7 @@ async function handleSubmit() {
 </script>
 
 <template>
-  <v-dialog v-model="open" max-width="480">
+  <v-dialog v-model="open" max-width="460">
     <v-card class="pa-6">
       <div class="d-flex align-start justify-space-between mb-4">
         <div>
@@ -155,6 +183,7 @@ async function handleSubmit() {
           id="auth-name"
           v-model="name"
           label="昵称"
+          autocomplete="nickname"
           required
           maxlength="60"
           placeholder="例如：星光旅人"
@@ -165,10 +194,11 @@ async function handleSubmit() {
           v-model="email"
           label="电子邮箱"
           type="email"
+          autocomplete="email"
           required
           placeholder="name@example.com"
           :hint="mode === 'register' ? domainHint : undefined"
-          persistent-hint
+          :persistent-hint="Boolean(mode === 'register' && domainHint)"
         />
 
         <div v-if="mode === 'register' && policy?.requireEmailVerification" class="d-flex ga-2 align-start">
@@ -176,6 +206,7 @@ async function handleSubmit() {
             id="auth-code"
             v-model="code"
             label="邮箱验证码"
+            autocomplete="one-time-code"
             required
             maxlength="12"
             placeholder="6 位数字"
@@ -195,9 +226,12 @@ async function handleSubmit() {
           id="auth-password"
           v-model="password"
           label="密码"
-          type="password"
+          :type="showPassword ? 'text' : 'password'"
+          :autocomplete="mode === 'login' ? 'current-password' : 'new-password'"
+          :append-inner-icon="showPassword ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
           required
           placeholder="至少 8 个字符"
+          @click:append-inner="showPassword = !showPassword"
         />
 
         <v-alert v-if="errorMsg" type="error" variant="tonal" density="compact">
@@ -212,7 +246,7 @@ async function handleSubmit() {
           class="mt-2"
           :loading="busy"
           :disabled="mode === 'register' && policy?.registrationOpen === false"
-          prepend-icon="mdi-sparkles"
+          :prepend-icon="mode === 'login' ? 'mdi-login' : 'mdi-account-plus-outline'"
         >
           {{ mode === 'login' ? '立即登录' : '创建账号并进入' }}
         </v-btn>

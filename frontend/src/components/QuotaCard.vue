@@ -9,7 +9,7 @@ defineProps<{
 }>();
 
 function pct(value: number, max: number): number {
-  if (max <= 0) return 100;
+  if (max <= 0) return 0;
   return Math.max(0, Math.min(100, Math.round((value / max) * 100)));
 }
 
@@ -96,7 +96,7 @@ function tone(w: QuotaWindow): string {
   position: absolute;
   inset: 0 auto 0 0;
   border-radius: inherit;
-  transition: width var(--cp-spring-slow, 0.4s ease);
+  transition: width var(--cp-motion-slow, 0.38s ease);
 }
 .cp-quota-mini {
   display: flex;

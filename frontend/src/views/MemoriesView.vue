@@ -1,17 +1,20 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import AvatarBadge from '../components/m3/AvatarBadge.vue';
 import EmptyState from '../components/m3/EmptyState.vue';
+import M3Loader from '../components/m3/M3Loader.vue';
 import { api, ApiError } from '../lib/api';
 import { formatRelativeTime } from '../lib/display';
 import type { Memory, MemoryKind, MemoryRecallResult } from '../lib/types';
 import { useAppStore } from '../stores/app';
 
 const store = useAppStore();
+const route = useRoute();
 
 const items = ref<Memory[]>([]);
 const loading = ref(true);
-const filterCharId = ref('all');
+const filterCharId = ref(typeof route.query.characterId === 'string' && route.query.characterId ? route.query.characterId : 'all');
 const filterStatus = ref('active');
 const filterKind = ref('all');
 const search = ref('');
@@ -19,6 +22,7 @@ const createOpen = ref(false);
 const saving = ref(false);
 const actionBusy = ref(false);
 const recallQuery = ref('');
+const recallBusy = ref(false);
 const recallResults = ref<MemoryRecallResult[] | null>(null);
 
 const createForm = reactive({
@@ -39,9 +43,11 @@ const kindLabels: Record<MemoryKind, string> = {
   note: '笔记',
 };
 
+const kindSelectOptions = Object.entries(kindLabels).map(([value, title]) => ({ value, title }));
+
 const kindOptions = [
   { value: 'all', title: '全部类型' },
-  ...Object.entries(kindLabels).map(([value, title]) => ({ value, title })),
+  ...kindSelectOptions,
 ];
 
 async function loadMemories() {
@@ -56,7 +62,7 @@ async function loadMemories() {
       characterId: filterCharId.value,
       status: filterStatus.value,
       kind: filterKind.value,
-      q: search.value.trim() || undefined,
+      q: (search.value ?? '').trim() || undefined,
     });
   } catch (err) {
     store.notify(err instanceof ApiError ? err.message : '读取记忆失败', 'error');
@@ -68,13 +74,34 @@ async function loadMemories() {
 onMounted(loadMemories);
 watch([() => store.user?.id, filterCharId, filterStatus, filterKind], loadMemories);
 
+watch(filterCharId, () => {
+  recallResults.value = null;
+});
+
+watch(
+  () => route.query.characterId,
+  (qId) => {
+    if (typeof qId === 'string' && qId && qId !== filterCharId.value) {
+      filterCharId.value = qId;
+    }
+  }
+);
+
 async function submitCreate() {
+  if (!createForm.characterId) {
+    store.notify('请选择关联角色', 'error');
+    return;
+  }
+  if (!createForm.content.trim()) {
+    store.notify('请输入记忆内容', 'error');
+    return;
+  }
   saving.value = true;
   try {
     const tags = createForm.tagsText.split(/[，,]/).map((s) => s.trim()).filter(Boolean);
     await api.createMemory({
       characterId: createForm.characterId,
-      content: createForm.content,
+      content: createForm.content.trim(),
       kind: createForm.kind,
       importance: createForm.importance,
       tags,
@@ -103,9 +130,16 @@ async function toggleArchive(m: Memory) {
   }
 }
 
-async function removeMemory(id: string) {
+async function removeMemory(m: Memory) {
+  const ok = await store.confirm({
+    title: '删除这条记忆',
+    message: '删除后角色将不再记得该条目，此操作无法撤销。',
+    confirmText: '确认删除',
+    tone: 'error',
+  });
+  if (!ok) return;
   try {
-    await api.deleteMemory(id);
+    await api.deleteMemory(m.id);
     await loadMemories();
     await store.refresh();
     store.notify('记忆已删除', 'info');
@@ -116,7 +150,7 @@ async function removeMemory(id: string) {
 
 async function runSummarize() {
   if (filterCharId.value === 'all') {
-    store.notify('请先选择一位具体角色再执行整理', 'error');
+    store.notify('请先在下方选择一位具体角色再执行整理', 'error');
     return;
   }
   actionBusy.value = true;
@@ -133,7 +167,7 @@ async function runSummarize() {
 
 async function runReindex() {
   if (filterCharId.value === 'all') {
-    store.notify('请先选择一位具体角色再同步向量', 'error');
+    store.notify('请先在下方选择一位具体角色再同步向量', 'error');
     return;
   }
   actionBusy.value = true;
@@ -153,11 +187,18 @@ async function runRecallPreview() {
     store.notify('请先选择一位角色来测试召回', 'error');
     return;
   }
-  if (!recallQuery.value.trim()) return;
+  const q = (recallQuery.value ?? '').trim();
+  if (!q) {
+    store.notify('请输入要测试的提问内容', 'info');
+    return;
+  }
+  recallBusy.value = true;
   try {
-    recallResults.value = await api.recallPreview(filterCharId.value, recallQuery.value.trim());
+    recallResults.value = await api.recallPreview(filterCharId.value, q);
   } catch (err) {
     store.notify(err instanceof ApiError ? err.message : '召回测试失败', 'error');
+  } finally {
+    recallBusy.value = false;
   }
 }
 </script>
@@ -195,7 +236,16 @@ async function runRecallPreview() {
       </div>
     </header>
 
-    <EmptyState v-if="!store.user" icon="mdi-brain" title="登录后查看长期记忆" description="每个角色为你保留独立的认知档案，结合 FTS5 与语义向量自动召回。">
+    <div v-if="store.loading" class="cp-loading-state">
+      <M3Loader :size="44" contained label="正在加载长期记忆" />
+    </div>
+
+    <EmptyState
+      v-else-if="!store.user"
+      icon="mdi-brain"
+      title="登录后查看长期记忆"
+      description="每个角色为你保留独立的认知档案，结合 FTS5 与语义向量自动召回。"
+    >
       <template #action>
         <v-btn color="primary" @click="store.openAuth('login')">立即登录</v-btn>
       </template>
@@ -241,7 +291,7 @@ async function runRecallPreview() {
           :class="{ 'is-on': filterKind === opt.value }"
           @click="filterKind = opt.value"
         >
-          <v-icon v-if="filterKind === opt.value" icon="mdi-check" size="18" />
+          <v-icon v-if="filterKind === opt.value" icon="mdi-check" size="16" />
           {{ opt.value === 'all' ? '全部' : opt.title }}
         </button>
       </div>
@@ -260,7 +310,7 @@ async function runRecallPreview() {
             hide-details
             @keydown.enter="runRecallPreview"
           />
-          <v-btn color="primary" variant="flat" height="40" @click="runRecallPreview">预览</v-btn>
+          <v-btn color="primary" variant="flat" height="40" :loading="recallBusy" @click="runRecallPreview">预览</v-btn>
         </div>
         <div v-if="recallResults" class="cp-recall__list">
           <div class="cp-recall__count">命中 {{ recallResults.length }} 条</div>
@@ -272,7 +322,11 @@ async function runRecallPreview() {
         </div>
       </div>
 
-      <div v-if="items.length" class="cp-grid">
+      <div v-if="loading && !items.length" class="cp-loading-state">
+        <M3Loader :size="40" contained label="正在读取记忆档案" />
+      </div>
+
+      <div v-else-if="items.length" class="cp-grid">
         <article v-for="m in items" :key="m.id" class="cp-mem" :class="{ 'is-archived': m.status === 'archived' }">
           <div class="d-flex align-center ga-2">
             <AvatarBadge
@@ -310,7 +364,7 @@ async function runRecallPreview() {
               <v-icon :icon="m.status === 'active' ? 'mdi-archive-arrow-down-outline' : 'mdi-archive-arrow-up-outline'" size="18" />
               <v-tooltip activator="parent">{{ m.status === 'active' ? '归档' : '恢复' }}</v-tooltip>
             </v-btn>
-            <v-btn icon variant="text" size="small" class="cp-del" aria-label="删除" @click="removeMemory(m.id)">
+            <v-btn icon variant="text" size="small" class="cp-del" aria-label="删除" @click="removeMemory(m)">
               <v-icon icon="mdi-delete-outline" size="18" />
               <v-tooltip activator="parent">删除</v-tooltip>
             </v-btn>
@@ -319,7 +373,7 @@ async function runRecallPreview() {
       </div>
 
       <EmptyState
-        v-else-if="!loading"
+        v-else
         icon="mdi-brain"
         title="暂无符合条件的记忆条目"
         description="对话过程中说“记住：…”或由 AI 在多轮对话后自动沉淀。"
@@ -330,7 +384,7 @@ async function runRecallPreview() {
       <v-card class="pa-6">
         <div class="d-flex align-center justify-space-between mb-4">
           <h3 class="text-headline-small">添加手写记忆</h3>
-          <v-btn icon="mdi-close" variant="text" size="small" @click="createOpen = false" />
+          <v-btn icon="mdi-close" variant="text" size="small" aria-label="关闭" @click="createOpen = false" />
         </div>
         <v-form class="d-flex flex-column ga-3" @submit.prevent="submitCreate">
           <v-select
@@ -346,7 +400,7 @@ async function runRecallPreview() {
               <v-select
                 v-model="createForm.kind"
                 label="记忆分类"
-                :items="Object.entries(kindLabels).map(([value, title]) => ({ value, title }))"
+                :items="kindSelectOptions"
               />
             </v-col>
             <v-col cols="6">
@@ -411,45 +465,6 @@ async function runRecallPreview() {
     display: none;
   }
 }
-.cp-filter {
-  position: relative;
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  height: 32px;
-  padding: 0 16px;
-  border-radius: var(--cp-radius-sm);
-  font-size: 0.875rem;
-  font-weight: 500;
-  white-space: nowrap;
-  color: rgb(var(--v-theme-on-surface-variant));
-  border: 1px solid rgb(var(--v-theme-outline-variant));
-  background: transparent;
-  cursor: pointer;
-  overflow: hidden;
-  transition: background-color var(--cp-fx), border-radius var(--cp-spring-fast);
-}
-.cp-filter::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: currentColor;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-.cp-filter:hover::after {
-  opacity: 0.08;
-}
-.cp-filter:active {
-  border-radius: 4px;
-}
-.cp-filter.is-on {
-  padding-left: 8px;
-  color: rgb(var(--v-theme-on-secondary-container));
-  background: rgb(var(--v-theme-secondary-container));
-  border-color: transparent;
-}
 
 .cp-recall {
   padding: 18px 20px;
@@ -488,7 +503,7 @@ async function runRecallPreview() {
   gap: 10px;
   padding: 10px 14px;
   font-size: 0.875rem;
-  border-radius: 4px;
+  border-radius: 6px;
   background: rgb(var(--v-theme-surface-container-lowest));
 }
 .cp-recall__row:first-of-type {
@@ -513,10 +528,9 @@ async function runRecallPreview() {
   padding: 18px 18px 10px;
   border-radius: var(--cp-radius-lg);
   background: rgb(var(--v-theme-surface-container-low));
-  transition: border-radius var(--cp-spring), background-color var(--cp-fx);
+  transition: background-color var(--cp-fx);
 }
 .cp-mem:hover {
-  border-radius: 24px;
   background: rgb(var(--v-theme-surface-container));
 }
 .cp-mem.is-archived {
@@ -531,16 +545,6 @@ async function runRecallPreview() {
   margin: 0;
   font-size: 0.9375rem;
   line-height: 1.65;
-}
-.cp-kind {
-  flex-shrink: 0;
-  font-size: 0.6875rem;
-  font-weight: 500;
-  letter-spacing: 0.03em;
-  padding: 2px 8px;
-  border-radius: var(--cp-radius-sm);
-  color: rgb(var(--v-theme-on-secondary-container));
-  background: rgb(var(--v-theme-secondary-container));
 }
 .cp-src {
   display: inline-flex;

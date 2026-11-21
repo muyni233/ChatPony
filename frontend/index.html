@@ -3,8 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F4EFE5" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#13110E" />
+    <meta name="theme-color" content="#F5FBF7" />
     <meta name="description" content="ChatPony" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <title>ChatPony</title>
@@ -13,7 +12,12 @@
         try {
           var d = document.documentElement;
           var t = localStorage.getItem('chatpony-theme');
-          if (t === 'light' || t === 'dark') d.setAttribute('data-theme', t);
+          if (t !== 'light' && t !== 'dark') {
+            t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          }
+          d.setAttribute('data-theme', t);
+          var m = document.querySelector('meta[name="theme-color"]');
+          if (m) m.setAttribute('content', t === 'dark' ? '#0E1513' : '#F5FBF7');
         } catch (e) {}
       })();
     </script>

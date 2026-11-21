@@ -2,9 +2,11 @@
 import { computed, ref } from 'vue';
 import AvatarBadge from '../components/m3/AvatarBadge.vue';
 import EmptyState from '../components/m3/EmptyState.vue';
+import M3Loader from '../components/m3/M3Loader.vue';
 import { api, ApiError } from '../lib/api';
 import { deleteCachedConversation } from '../lib/conversationCache';
 import { formatRelativeTime } from '../lib/display';
+import type { Conversation } from '../lib/types';
 import { useAppStore } from '../stores/app';
 
 const store = useAppStore();
@@ -17,19 +19,29 @@ const charById = computed(() => {
   return m;
 });
 
+const trimmedSearch = computed(() => (search.value ?? '').trim());
+
 const filtered = computed(() => {
-  const q = search.value.trim().toLowerCase();
+  const q = trimmedSearch.value.toLowerCase();
   if (!q) return store.conversations;
   return store.conversations.filter(
     (c) => c.title.toLowerCase().includes(q) || c.lastMessage.toLowerCase().includes(q)
   );
 });
 
-async function handleDelete(id: string) {
-  deletingId.value = id;
+async function handleDelete(conv: Conversation) {
+  const ok = await store.confirm({
+    title: '删除对话记录',
+    message: `确定永久删除「${conv.title}」及其全部消息吗？此操作无法撤销。`,
+    confirmText: '确认删除',
+    tone: 'error',
+  });
+  if (!ok) return;
+
+  deletingId.value = conv.id;
   try {
-    await api.deleteConversation(id);
-    deleteCachedConversation(id);
+    await api.deleteConversation(conv.id);
+    deleteCachedConversation(conv.id);
     await store.refresh();
     store.notify('对话已删除', 'info');
   } catch (err) {
@@ -62,8 +74,12 @@ async function handleDelete(id: string) {
       </div>
     </header>
 
+    <div v-if="store.loading" class="cp-loading-state">
+      <M3Loader :size="44" contained label="正在加载对话记录" />
+    </div>
+
     <EmptyState
-      v-if="!store.user"
+      v-else-if="!store.user"
       icon="mdi-message-text-outline"
       title="登录后查看对话记录"
       description="你的全部单聊、群聊记录和摘要都会安全保存在个人账号下。"
@@ -92,7 +108,7 @@ async function handleDelete(id: string) {
             :ring="conv.characterIds.length > 1"
           />
         </div>
-        <div class="flex-grow-1" style="min-width:0">
+        <div class="flex-grow-1 min-width-0">
           <div class="d-flex align-center ga-2">
             <span class="text-title-small font-weight-bold text-truncate">{{ conv.title }}</span>
             <span v-if="conv.kind === 'group'" class="cp-kind">群聊 · {{ conv.characterIds.length }}</span>
@@ -110,13 +126,13 @@ async function handleDelete(id: string) {
           class="cp-conv-row__del"
           aria-label="删除对话"
           :loading="deletingId === conv.id"
-          @click.prevent.stop="handleDelete(conv.id)"
+          @click.prevent.stop="handleDelete(conv)"
         />
       </router-link>
     </div>
 
     <EmptyState
-      v-else-if="search"
+      v-else-if="trimmedSearch"
       icon="mdi-magnify"
       title="没有匹配的对话"
       description="换个关键词试试。"
@@ -167,7 +183,7 @@ async function handleDelete(id: string) {
 .cp-conv-row__del {
   color: rgb(var(--v-theme-on-surface-variant));
   opacity: 0;
-  transition: opacity 0.15s;
+  transition: opacity var(--cp-fx-fast), color var(--cp-fx-fast);
 }
 .cp-conv-row:hover .cp-conv-row__del,
 .cp-conv-row__del:focus-visible {
@@ -180,15 +196,5 @@ async function handleDelete(id: string) {
   .cp-conv-row__del {
     opacity: 1;
   }
-}
-.cp-kind {
-  flex-shrink: 0;
-  font-size: 0.6875rem;
-  font-weight: 500;
-  letter-spacing: 0.03em;
-  padding: 2px 8px;
-  border-radius: var(--cp-radius-sm);
-  color: rgb(var(--v-theme-on-secondary-container));
-  background: rgb(var(--v-theme-secondary-container));
 }
 </style>

@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue';
 import { defineStore } from 'pinia';
-import { api } from '../lib/api';
+import { api, ApiError } from '../lib/api';
 import { clearConversationCache } from '../lib/conversationCache';
 import type { Bootstrap, PlatformSettings, QuotaSnapshot, User } from '../lib/types';
 
@@ -8,6 +8,18 @@ export interface ToastMessage {
   id: number;
   text: string;
   tone: 'info' | 'success' | 'error';
+}
+
+export interface ConfirmOptions {
+  title: string;
+  message: string;
+  confirmText?: string;
+  cancelText?: string;
+  tone?: 'primary' | 'error';
+}
+
+export interface ConfirmState extends ConfirmOptions {
+  open: boolean;
 }
 
 const DEFAULT_SETTINGS: PlatformSettings = {
@@ -47,16 +59,51 @@ const DEFAULT_SETTINGS: PlatformSettings = {
   memoryArchiveThreshold: 0.25,
 };
 
+function resolveInitialTheme(): 'light' | 'dark' {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const saved = localStorage.getItem('chatpony-theme');
+      if (saved === 'dark' || saved === 'light') return saved;
+    }
+  } catch {
+    // Ignore storage access errors
+  }
+  if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches) {
+    return 'dark';
+  }
+  return 'light';
+}
+
+function syncDocumentTheme(next: 'light' | 'dark') {
+  if (typeof document === 'undefined') return;
+  document.documentElement.dataset.theme = next;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) {
+    meta.setAttribute('content', next === 'dark' ? '#0E1513' : '#F5FBF7');
+  }
+}
+
 export const useAppStore = defineStore('app', () => {
   const bootstrap = ref<Bootstrap | null>(null);
   const loading = ref(true);
   const error = ref<string | null>(null);
-  const theme = ref<'light' | 'dark'>('light');
+  const theme = ref<'light' | 'dark'>(resolveInitialTheme());
   const authDialogMode = ref<'login' | 'register' | null>(null);
   const newChatModalOpen = ref(false);
   const newChatPreselectId = ref<string | null>(null);
-  const toasts = ref<ToastMessage[]>([]);
+  const toast = ref<ToastMessage | null>(null);
   let toastSeq = 1;
+  let toastTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const confirmState = ref<ConfirmState>({
+    open: false,
+    title: '',
+    message: '',
+    confirmText: '确认',
+    cancelText: '取消',
+    tone: 'primary',
+  });
+  let confirmResolver: ((ok: boolean) => void) | null = null;
 
   const user = computed<User | null>(() => bootstrap.value?.user ?? null);
   const isAdmin = computed(() => bootstrap.value?.user?.role === 'admin');
@@ -69,41 +116,74 @@ export const useAppStore = defineStore('app', () => {
     () => bootstrap.value?.stats ?? { conversations: 0, messages: 0, memories: 0 }
   );
 
-  function applyTheme(next: 'light' | 'dark') {
+  function applyTheme(next: 'light' | 'dark', persist = true) {
     theme.value = next;
-    if (typeof document !== 'undefined') {
-      document.documentElement.dataset.theme = next;
-    }
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('chatpony-theme', next);
+    syncDocumentTheme(next);
+    if (persist) {
+      try {
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem('chatpony-theme', next);
+        }
+      } catch {
+        // Ignore storage write errors
+      }
     }
   }
 
   function initTheme() {
-    if (typeof localStorage !== 'undefined') {
-      const saved = localStorage.getItem('chatpony-theme');
-      if (saved === 'dark' || saved === 'light') {
-        applyTheme(saved);
-        return;
-      }
-    }
-    if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches) {
-      applyTheme('dark');
-    } else {
-      applyTheme('light');
-    }
+    applyTheme(resolveInitialTheme(), false);
   }
 
   function toggleTheme() {
     applyTheme(theme.value === 'dark' ? 'light' : 'dark');
   }
 
+  function dismissToast() {
+    if (toastTimer) {
+      clearTimeout(toastTimer);
+      toastTimer = null;
+    }
+    toast.value = null;
+  }
+
   function notify(text: string, tone: 'info' | 'success' | 'error' = 'info') {
+    if (toastTimer) {
+      clearTimeout(toastTimer);
+      toastTimer = null;
+    }
     const id = toastSeq++;
-    toasts.value.push({ id, text, tone });
-    setTimeout(() => {
-      toasts.value = toasts.value.filter((t) => t.id !== id);
-    }, 3600);
+    toast.value = { id, text, tone };
+    toastTimer = setTimeout(() => {
+      if (toast.value?.id === id) {
+        toast.value = null;
+      }
+      toastTimer = null;
+    }, tone === 'error' ? 4200 : 3200);
+  }
+
+  function confirm(options: ConfirmOptions): Promise<boolean> {
+    if (confirmResolver) {
+      confirmResolver(false);
+      confirmResolver = null;
+    }
+    confirmState.value = {
+      open: true,
+      title: options.title,
+      message: options.message,
+      confirmText: options.confirmText ?? '确认',
+      cancelText: options.cancelText ?? '取消',
+      tone: options.tone ?? 'primary',
+    };
+    return new Promise((resolve) => {
+      confirmResolver = resolve;
+    });
+  }
+
+  function resolveConfirm(ok: boolean) {
+    confirmState.value.open = false;
+    const fn = confirmResolver;
+    confirmResolver = null;
+    fn?.(ok);
   }
 
   async function refresh() {
@@ -152,10 +232,14 @@ export const useAppStore = defineStore('app', () => {
   }
 
   async function logout() {
-    await api.logout();
-    clearConversationCache();
-    await refresh();
-    notify('已安全退出登录', 'info');
+    try {
+      await api.logout();
+      clearConversationCache();
+      await refresh();
+      notify('已安全退出登录', 'info');
+    } catch (err) {
+      notify(err instanceof ApiError ? err.message : '退出登录失败，请稍后重试', 'error');
+    }
   }
 
   return {
@@ -166,7 +250,8 @@ export const useAppStore = defineStore('app', () => {
     authDialogMode,
     newChatModalOpen,
     newChatPreselectId,
-    toasts,
+    toast,
+    confirmState,
     user,
     isAdmin,
     characters,
@@ -179,6 +264,9 @@ export const useAppStore = defineStore('app', () => {
     applyTheme,
     toggleTheme,
     notify,
+    dismissToast,
+    confirm,
+    resolveConfirm,
     refresh,
     setQuota,
     setUser,

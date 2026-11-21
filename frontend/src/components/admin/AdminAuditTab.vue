@@ -31,6 +31,7 @@ const kind = ref('all');
 const search = ref('');
 const detail = ref<RequestAuditDetail | null>(null);
 const detailOpen = ref(false);
+const detailBusyId = ref<string | null>(null);
 
 async function load() {
   try {
@@ -40,7 +41,7 @@ async function load() {
         pageSize: 25,
         status: status.value,
         kind: kind.value,
-        q: search.value.trim() || undefined,
+        q: (search.value ?? '').trim() || undefined,
       }),
       api.adminAuditStats(24),
     ]);
@@ -51,24 +52,41 @@ async function load() {
   }
 }
 
+function reloadFromFirstPage() {
+  if (page.value !== 1) {
+    page.value = 1;
+  } else {
+    load();
+  }
+}
+
 onMounted(load);
-watch([page, status, kind], load);
+watch(page, load);
+watch([status, kind], reloadFromFirstPage);
 
 async function openDetail(id: string) {
+  detailBusyId.value = id;
   try {
     detail.value = await api.adminAuditDetail(id);
     detailOpen.value = true;
   } catch (err) {
     store.notify(err instanceof ApiError ? err.message : '加载详情失败', 'error');
+  } finally {
+    detailBusyId.value = null;
   }
 }
 
 async function clearAll() {
-  if (!window.confirm('确认清空全部请求审计记录吗？')) return;
+  const ok = await store.confirm({
+    title: '清空请求审计日志',
+    message: '确认清空全部模型请求审计记录吗？此操作无法撤销。',
+    confirmText: '确认清空',
+    tone: 'error',
+  });
+  if (!ok) return;
   try {
     await api.adminClearAudit();
-    page.value = 1;
-    await load();
+    reloadFromFirstPage();
     store.notify('审计日志已清空', 'info');
   } catch (err) {
     store.notify(err instanceof ApiError ? err.message : '清空失败', 'error');
@@ -80,45 +98,48 @@ async function clearAll() {
   <div class="d-flex flex-column ga-5">
     <v-row v-if="stats" density="compact">
       <v-col cols="6" sm="3">
-        <v-card color="surface-light" class="pa-4">
+        <v-card color="surface-container" class="pa-4">
           <div class="text-body-small text-medium-emphasis">24h 总请求</div>
           <div class="text-headline-small font-weight-bold mt-1">{{ stats.total }}</div>
         </v-card>
       </v-col>
       <v-col cols="6" sm="3">
-        <v-card color="surface-light" class="pa-4">
+        <v-card color="surface-container" class="pa-4">
           <div class="text-body-small text-medium-emphasis">成功 / 失败</div>
           <div class="text-headline-small font-weight-bold mt-1">{{ stats.success }} / {{ stats.failed }}</div>
         </v-card>
       </v-col>
       <v-col cols="6" sm="3">
-        <v-card color="surface-light" class="pa-4">
+        <v-card color="surface-container" class="pa-4">
           <div class="text-body-small text-medium-emphasis">平均延迟</div>
           <div class="text-headline-small font-weight-bold mt-1">{{ stats.avgDurationMs }} ms</div>
         </v-card>
       </v-col>
       <v-col cols="6" sm="3">
-        <v-card color="surface-light" class="pa-4">
+        <v-card color="surface-container" class="pa-4">
           <div class="text-body-small text-medium-emphasis">Token 输入 / 输出</div>
           <div class="text-title-large font-weight-bold mt-1">{{ stats.inputTokens }} / {{ stats.outputTokens }}</div>
         </v-card>
       </v-col>
     </v-row>
 
-    <v-card border class="pa-5">
+    <v-card rounded="xl" class="pa-5">
       <div class="d-flex align-center justify-space-between ga-3 flex-wrap mb-4">
         <div class="d-flex ga-2 flex-wrap align-center">
-          <v-select v-model="status" :items="statusItems" density="compact" style="width:130px" />
-          <v-select v-model="kind" :items="kindItems" density="compact" style="width:140px" />
+          <v-select v-model="status" :items="statusItems" density="compact" hide-details style="width:130px" />
+          <v-select v-model="kind" :items="kindItems" density="compact" hide-details style="width:140px" />
           <v-text-field
             v-model="search"
             density="compact"
+            clearable
+            hide-details
             prepend-inner-icon="mdi-magnify"
             placeholder="搜索模型/用户/错误..."
             style="width:220px"
-            @keydown.enter="page = 1; load()"
+            @keydown.enter="reloadFromFirstPage"
+            @click:clear="search = ''; reloadFromFirstPage()"
           />
-          <v-btn variant="tonal" color="primary" size="small" icon="mdi-refresh" aria-label="刷新审计日志" @click="page = 1; load()" />
+          <v-btn variant="tonal" color="primary" size="small" icon="mdi-refresh" aria-label="刷新审计日志" @click="reloadFromFirstPage" />
         </div>
         <v-btn color="error" variant="tonal" size="small" prepend-icon="mdi-delete-sweep-outline" @click="clearAll">
           清空日志
@@ -129,7 +150,7 @@ async function clearAll() {
         <v-sheet
           v-for="item in list.items"
           :key="item.id"
-          color="surface-light"
+          color="surface-container"
           rounded="lg"
           class="pa-3 d-flex align-center ga-2 flex-wrap"
         >
@@ -149,7 +170,13 @@ async function clearAll() {
           <span class="ms-auto text-body-small text-medium-emphasis">
             {{ formatDateTime(item.createdAt) }}
           </span>
-          <v-btn variant="outlined" size="small" prepend-icon="mdi-eye-outline" @click="openDetail(item.id)">
+          <v-btn
+            variant="outlined"
+            size="small"
+            prepend-icon="mdi-eye-outline"
+            :loading="detailBusyId === item.id"
+            @click="openDetail(item.id)"
+          >
             详情
           </v-btn>
         </v-sheet>
@@ -166,11 +193,11 @@ async function clearAll() {
       </div>
     </v-card>
 
-    <v-dialog v-model="detailOpen" max-width="780">
+    <v-dialog v-model="detailOpen" max-width="780" scrollable>
       <v-card class="pa-2">
         <v-card-title class="d-flex align-center justify-space-between">
           <span class="font-weight-bold">模型请求审计详情（已脱敏）</span>
-          <v-btn icon="mdi-close" variant="text" size="small" @click="detailOpen = false" />
+          <v-btn icon="mdi-close" variant="text" size="small" aria-label="关闭" @click="detailOpen = false" />
         </v-card-title>
         <v-card-text v-if="detail" class="d-flex flex-column ga-3 text-body-medium">
           <div><strong>端点：</strong><code class="font-mono">{{ detail.endpoint }}</code></div>

@@ -11,9 +11,13 @@ const route = useRoute();
 const { mdAndUp } = useDisplay();
 
 const drawer = ref(true);
-watch(mdAndUp, (wide) => {
-  drawer.value = wide;
-}, { immediate: true });
+watch(
+  mdAndUp,
+  (wide) => {
+    drawer.value = wide;
+  },
+  { immediate: true }
+);
 
 const isChatRoute = computed(() => route.path.startsWith('/chat/'));
 
@@ -44,12 +48,19 @@ const navGroups = computed(() => [
   },
 ]);
 
-const latestToast = computed(() => store.toasts[store.toasts.length - 1] ?? null);
 const snackOpen = computed({
-  get: () => latestToast.value !== null,
+  get: () => store.toast !== null,
   set: (v: boolean) => {
-    if (!v) store.toasts = [];
+    if (!v) store.dismissToast();
   },
+});
+
+const mobileNavValue = computed(() => {
+  if (route.path === '/') return 'home';
+  if (route.path.startsWith('/characters')) return 'characters';
+  if (route.path.startsWith('/conversations')) return 'conversations';
+  if (route.path.startsWith('/memories')) return 'memories';
+  return undefined;
 });
 
 const charColor = computed(() => {
@@ -58,7 +69,6 @@ const charColor = computed(() => {
   return m;
 });
 
-// M3: the selected destination shows the filled icon
 function navIcon(to: string, outline: string, filled: string) {
   const active = to === '/' ? route.path === '/' : route.path.startsWith(to);
   return active ? filled : outline;
@@ -66,6 +76,11 @@ function navIcon(to: string, outline: string, filled: string) {
 
 function closeIfMobile() {
   if (!mdAndUp.value) drawer.value = false;
+}
+
+async function handleLogout() {
+  closeIfMobile();
+  await store.logout();
 }
 </script>
 
@@ -84,7 +99,7 @@ function closeIfMobile() {
         <!-- Brand -->
         <div class="cp-brand">
           <router-link to="/" class="cp-brand__link" @click="closeIfMobile">
-            <img src="/icon.svg" alt="" class="cp-brand__mark" width="30" height="30" />
+            <img src="/icon.svg" alt="" class="cp-brand__mark" width="32" height="32" />
             <span class="cp-brand__name">ChatPony</span>
           </router-link>
           <v-btn
@@ -96,14 +111,14 @@ function closeIfMobile() {
             :aria-label="store.theme === 'dark' ? '切换浅色模式' : '切换深色模式'"
             @click="store.toggleTheme()"
           >
-            <v-icon size="18" :icon="store.theme === 'dark' ? 'mdi-white-balance-sunny' : 'mdi-weather-night'" />
+            <v-icon size="18" :icon="store.theme === 'dark' ? 'mdi-weather-sunny' : 'mdi-weather-night'" />
             <v-tooltip activator="parent">{{ store.theme === 'dark' ? '浅色模式' : '深色模式' }}</v-tooltip>
           </v-btn>
         </div>
 
         <div class="px-3 pt-1 pb-3">
           <button v-ripple type="button" class="cp-fab" @click="store.openNewChat(); closeIfMobile()">
-            <v-icon icon="mdi-pencil-outline" size="22" />
+            <v-icon icon="mdi-pencil-outline" size="20" />
             <span>发起新对话</span>
           </button>
         </div>
@@ -126,7 +141,7 @@ function closeIfMobile() {
                 :class="{ 'is-active': item.to === '/' ? isExactActive : isActive }"
                 @click="navigate($event); closeIfMobile()"
               >
-                <v-icon :icon="(item.to === '/' ? isExactActive : isActive) ? item.iconActive : item.icon" size="22" />
+                <v-icon :icon="(item.to === '/' ? isExactActive : isActive) ? item.iconActive : item.icon" size="20" />
                 <span>{{ item.label }}</span>
               </a>
             </router-link>
@@ -179,11 +194,11 @@ function closeIfMobile() {
                 <v-icon icon="mdi-unfold-more-horizontal" size="18" class="cp-faint" />
               </button>
             </template>
-            <v-list density="compact" min-width="220" class="cp-menu">
+            <v-list density="compact" min-width="220">
               <v-list-item to="/settings" prepend-icon="mdi-cog-outline" title="账号设置" @click="closeIfMobile" />
               <v-list-item to="/persona" prepend-icon="mdi-card-account-details-outline" title="个人设定" @click="closeIfMobile" />
               <v-divider class="my-1" />
-              <v-list-item prepend-icon="mdi-logout" title="退出登录" base-color="error" @click="store.logout()" />
+              <v-list-item prepend-icon="mdi-logout" title="退出登录" base-color="error" @click="handleLogout" />
             </v-list>
           </v-menu>
 
@@ -207,12 +222,12 @@ function closeIfMobile() {
       <v-app-bar-nav-icon aria-label="打开导航菜单" @click="drawer = !drawer" />
       <v-app-bar-title>
         <span class="cp-brand__inline">
-          <img src="/icon.svg" alt="" class="cp-brand__mark cp-brand__mark--sm" width="24" height="24" />
+          <img src="/icon.svg" alt="" class="cp-brand__mark cp-brand__mark--sm" width="28" height="28" />
           <span class="cp-brand__name">ChatPony</span>
         </span>
       </v-app-bar-title>
       <v-btn icon variant="text" width="40" height="40" class="cp-icon-btn" aria-label="切换主题" @click="store.toggleTheme()">
-        <v-icon size="22" :icon="store.theme === 'dark' ? 'mdi-white-balance-sunny' : 'mdi-weather-night'" />
+        <v-icon size="22" :icon="store.theme === 'dark' ? 'mdi-weather-sunny' : 'mdi-weather-night'" />
       </v-btn>
       <v-btn icon variant="flat" color="primary-container" width="40" height="40" class="cp-appbar__new mr-3 ml-1" aria-label="新对话" @click="store.openNewChat()">
         <v-icon size="22">mdi-pencil-outline</v-icon>
@@ -227,6 +242,7 @@ function closeIfMobile() {
     <!-- Mobile Bottom Navigation (hidden on chat detail screen) -->
     <v-bottom-navigation
       v-if="!mdAndUp && !isChatRoute"
+      :model-value="mobileNavValue"
       grow
       color="on-secondary-container"
       bg-color="surface-container"
@@ -249,7 +265,7 @@ function closeIfMobile() {
         <v-icon icon="mdi-brain" />
         <span>记忆</span>
       </v-btn>
-      <v-btn value="more" @click="drawer = true">
+      <v-btn :active="false" @click="drawer = true">
         <v-icon icon="mdi-dots-horizontal" />
         <span>更多</span>
       </v-btn>
@@ -258,25 +274,24 @@ function closeIfMobile() {
     <!-- Toast -->
     <v-snackbar
       v-model="snackOpen"
-      :color="latestToast?.tone === 'error' ? 'error' : 'inverse-surface'"
+      :color="store.toast?.tone === 'error' ? 'error' : 'inverse-surface'"
       rounded="lg"
       :location="mdAndUp ? 'bottom end' : 'top'"
-      :timeout="3200"
+      :timeout="-1"
       class="cp-toast"
     >
       <div class="d-flex align-center ga-2">
         <v-icon
           size="18"
-          :icon="latestToast?.tone === 'error' ? 'mdi-alert-circle-outline' : latestToast?.tone === 'success' ? 'mdi-check-circle-outline' : 'mdi-information-outline'"
+          :icon="store.toast?.tone === 'error' ? 'mdi-alert-circle-outline' : store.toast?.tone === 'success' ? 'mdi-check-circle-outline' : 'mdi-information-outline'"
         />
-        <span>{{ latestToast?.text }}</span>
+        <span>{{ store.toast?.text }}</span>
       </div>
     </v-snackbar>
   </v-app>
 </template>
 
 <style scoped>
-/* ---- M3 navigation drawer (standard) ---- */
 .cp-sidebar {
   border: 0 !important;
 }
@@ -311,40 +326,38 @@ function closeIfMobile() {
   align-items: center;
   gap: 10px;
 }
-/* M3 title-large */
 .cp-brand__name {
-  font-weight: 500;
-  font-size: 1.375rem;
+  font-weight: 600;
+  font-size: 1.25rem;
   line-height: 1.75rem;
-  letter-spacing: 0;
+  letter-spacing: -0.01em;
 }
 .cp-icon-btn {
   color: rgb(var(--v-theme-on-surface-variant));
 }
 
-/* M3 extended FAB, surface variant + lowered elevation: sits calmly in the drawer */
 .cp-fab {
   position: relative;
-  height: 56px;
+  height: 48px;
+  width: 100%;
   display: inline-flex;
   align-items: center;
-  gap: 12px;
-  padding: 0 20px 0 16px;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 18px;
   border: 0;
-  border-radius: 16px;
+  border-radius: var(--cp-radius-lg);
   font-size: 0.9375rem;
   font-weight: 600;
   letter-spacing: 0.00625em;
-  color: rgb(var(--v-theme-primary));
-  background: rgb(var(--v-theme-surface-container-highest));
-  box-shadow: none;
+  color: rgb(var(--v-theme-on-primary-container));
+  background: rgb(var(--v-theme-primary-container));
   cursor: pointer;
   overflow: hidden;
-  transition: box-shadow var(--cp-fx), border-radius var(--cp-spring-fast), transform var(--cp-spring-fast);
+  transition: box-shadow var(--cp-fx), transform var(--cp-fx-fast);
 }
 .cp-fab:active {
-  border-radius: 28px;
-  transform: scale(0.98);
+  transform: scale(0.985);
 }
 .cp-fab::after {
   content: '';
@@ -352,54 +365,52 @@ function closeIfMobile() {
   inset: 0;
   background: currentColor;
   opacity: 0;
-  transition: opacity 0.15s var(--cp-ease-std);
+  transition: opacity var(--cp-fx-fast);
+  pointer-events: none;
 }
 .cp-fab:hover {
   box-shadow: var(--cp-shadow-sm);
 }
 .cp-fab:hover::after {
-  opacity: 0.08;
+  opacity: 0.06;
 }
 .cp-fab:active::after {
-  opacity: 0.12;
+  opacity: 0.1;
 }
 
 .cp-sidebar__scroll {
   flex: 1;
   overflow-y: auto;
   padding: 0 12px 20px;
-  /* fade content out under the footer instead of cutting it mid-line */
   -webkit-mask: linear-gradient(180deg, #000 calc(100% - 16px), transparent);
   mask: linear-gradient(180deg, #000 calc(100% - 16px), transparent);
 }
 .cp-nav-group {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
 }
 .cp-nav-group + .cp-nav-group {
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid rgb(var(--v-theme-outline-variant));
 }
-/* M3 drawer section header: title-small, on-surface-variant */
 .cp-nav-label {
-  font-size: 0.875rem;
-  font-weight: 500;
-  letter-spacing: 0.00625em;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
   line-height: 1.25rem;
   color: rgb(var(--v-theme-on-surface-variant));
-  padding: 12px 16px 8px;
+  padding: 8px 16px 6px;
 }
-/* M3 drawer item: full-rounded active indicator, state layers */
 .cp-nav-item {
   position: relative;
   display: flex;
   align-items: center;
   gap: 14px;
   flex-shrink: 0;
-  height: 50px;
-  padding: 0 24px 0 18px;
+  height: 46px;
+  padding: 0 18px;
   border-radius: 999px;
   font-size: 0.875rem;
   font-weight: 500;
@@ -407,10 +418,7 @@ function closeIfMobile() {
   color: rgb(var(--v-theme-on-surface-variant));
   text-decoration: none;
   overflow: hidden;
-  transition: background-color var(--cp-fx), color var(--cp-fx), border-radius var(--cp-spring-fast);
-}
-.cp-nav-item:active {
-  border-radius: 16px;
+  transition: background-color var(--cp-fx), color var(--cp-fx);
 }
 .cp-nav-item::after {
   content: '';
@@ -418,14 +426,14 @@ function closeIfMobile() {
   inset: 0;
   background: rgb(var(--v-theme-on-surface));
   opacity: 0;
-  transition: opacity 0.15s var(--cp-ease-std);
+  transition: opacity var(--cp-fx-fast);
   pointer-events: none;
 }
 .cp-nav-item:hover::after {
-  opacity: 0.08;
+  opacity: 0.07;
 }
 .cp-nav-item:active::after {
-  opacity: 0.12;
+  opacity: 0.11;
 }
 .cp-nav-item.is-active {
   background: rgb(var(--v-theme-secondary-container));
@@ -436,11 +444,11 @@ function closeIfMobile() {
   background: rgb(var(--v-theme-on-secondary-container));
 }
 .cp-nav-item--recent {
-  height: 44px;
+  height: 42px;
 }
 .cp-recent-dots {
   display: inline-flex;
-  width: 22px;
+  width: 20px;
   flex-shrink: 0;
   justify-content: center;
   gap: 2px;
@@ -454,7 +462,7 @@ function closeIfMobile() {
 .cp-sidebar__footer {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   padding: 8px 12px 12px;
 }
 .cp-account {
@@ -465,7 +473,7 @@ function closeIfMobile() {
   align-items: center;
   gap: 12px;
   width: 100%;
-  height: 56px;
+  height: 54px;
   padding: 0 12px 0 10px;
   border-radius: 999px;
   color: inherit;
@@ -478,10 +486,11 @@ function closeIfMobile() {
   inset: 0;
   background: rgb(var(--v-theme-on-surface));
   opacity: 0;
-  transition: opacity 0.15s var(--cp-ease-std);
+  transition: opacity var(--cp-fx-fast);
+  pointer-events: none;
 }
 .cp-account:hover::after {
-  opacity: 0.08;
+  opacity: 0.07;
 }
 .cp-account__name {
   display: block;
@@ -495,15 +504,8 @@ function closeIfMobile() {
   color: rgb(var(--v-theme-on-surface-variant));
   line-height: 1rem;
 }
-/* M3 menu: surface-container, extra-small corners, elevation 2 */
-.cp-menu {
-  background: rgb(var(--v-theme-surface-container)) !important;
-  border-radius: 4px !important;
-  box-shadow: var(--cp-shadow-md) !important;
-  padding: 8px 0;
-}
 
-/* ---- M3 navigation bar (mobile) ---- */
+/* Mobile bottom navigation */
 .cp-bottomnav {
   box-shadow: none !important;
 }
@@ -521,7 +523,6 @@ function closeIfMobile() {
   position: relative;
   gap: 4px;
 }
-/* M3 Expressive nav bar: the active indicator springs open from the centre */
 .cp-bottomnav :deep(.v-btn__content)::before {
   content: '';
   position: absolute;
@@ -533,8 +534,8 @@ function closeIfMobile() {
   border-radius: 16px;
   background: rgb(var(--v-theme-secondary-container));
   opacity: 0;
-  transform: scaleX(0.4);
-  transition: transform var(--cp-spring-fast), opacity var(--cp-fx-fast);
+  transform: scaleX(0.5);
+  transition: transform var(--cp-motion), opacity var(--cp-fx-fast);
 }
 .cp-bottomnav :deep(.v-btn--active .v-btn__content)::before {
   opacity: 1;
@@ -553,7 +554,7 @@ function closeIfMobile() {
 }
 .cp-bottomnav :deep(.v-btn--active) {
   color: rgb(var(--v-theme-on-surface));
-  font-weight: 700;
+  font-weight: 600;
 }
 .cp-bottomnav :deep(.v-btn--active .v-btn__content > .v-icon) {
   color: rgb(var(--v-theme-on-secondary-container));

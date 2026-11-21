@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import AvatarEditorButton from '../components/AvatarEditorButton.vue';
 import EmptyState from '../components/m3/EmptyState.vue';
+import M3Loader from '../components/m3/M3Loader.vue';
 import { api, ApiError } from '../lib/api';
 import type { Character, UserCharacters } from '../lib/types';
 import { useAppStore } from '../stores/app';
@@ -15,10 +16,9 @@ const loading = ref(true);
 const modalOpen = ref(false);
 const editingId = ref<string | null>(null);
 const saving = ref(false);
-const avatarBusy = ref(false);
+const avatarBusyId = ref<string | null>(null);
+const startingId = ref<string | null>(null);
 
-// Tonal-friendly presets for a character's accent colour
-const isCustomColor = computed(() => !swatches.some((c) => c.toLowerCase() === form.color.toLowerCase()));
 const swatches = ['#2B594F', '#4F6D3A', '#7B5EA7', '#3D6FB4', '#B4572E', '#C2844A', '#B4446C', '#5E5A6B'];
 
 const form = reactive({
@@ -32,6 +32,8 @@ const form = reactive({
   providerId: '' as string,
   active: true,
 });
+
+const isCustomColor = computed(() => !swatches.some((c) => c.toLowerCase() === form.color.toLowerCase()));
 
 async function load() {
   if (!store.user) {
@@ -81,12 +83,21 @@ function openEdit(ch: Character) {
 }
 
 async function handleSave() {
+  if (!form.name.trim()) {
+    store.notify('请填写角色名称', 'error');
+    return;
+  }
+  if (!form.personality.trim()) {
+    store.notify('请填写角色系统设定', 'error');
+    return;
+  }
+
   saving.value = true;
   const tags = form.tagsText.split(/[，,]/).map((s) => s.trim()).filter(Boolean);
   try {
     if (editingId.value) {
       await api.updateUserCharacter(editingId.value, {
-        name: form.name,
+        name: form.name.trim(),
         description: form.description,
         color: form.color,
         tags,
@@ -98,8 +109,8 @@ async function handleSave() {
       store.notify('自设角色已更新', 'success');
     } else {
       await api.createUserCharacter({
-        name: form.name,
-        slug: form.slug || undefined,
+        name: form.name.trim(),
+        slug: form.slug.trim() || undefined,
         description: form.description,
         color: form.color,
         tags,
@@ -120,10 +131,16 @@ async function handleSave() {
   }
 }
 
-async function handleDelete(id: string) {
-  if (!window.confirm('确定删除这个私有自设角色吗？')) return;
+async function handleDelete(ch: Character) {
+  const ok = await store.confirm({
+    title: '删除自设角色',
+    message: `确定删除私有自设角色「${ch.name}」吗？历史会话记录仍会保留。`,
+    confirmText: '确认删除',
+    tone: 'error',
+  });
+  if (!ok) return;
   try {
-    await api.deleteUserCharacter(id);
+    await api.deleteUserCharacter(ch.id);
     await load();
     await store.refresh();
     store.notify('已删除自设角色', 'info');
@@ -133,7 +150,7 @@ async function handleDelete(id: string) {
 }
 
 async function onUploadAvatar(id: string, file: File) {
-  avatarBusy.value = true;
+  avatarBusyId.value = id;
   try {
     await api.uploadUserCharacterAvatar(id, file);
     await load();
@@ -142,25 +159,35 @@ async function onUploadAvatar(id: string, file: File) {
   } catch (err) {
     store.notify(err instanceof ApiError ? err.message : '上传头像失败', 'error');
   } finally {
-    avatarBusy.value = false;
+    avatarBusyId.value = null;
   }
 }
 
 async function onClearAvatar(id: string) {
-  avatarBusy.value = true;
+  avatarBusyId.value = id;
   try {
     await api.deleteUserCharacterAvatar(id);
     await load();
     await store.refresh();
+    store.notify('已移除角色头像', 'info');
+  } catch (err) {
+    store.notify(err instanceof ApiError ? err.message : '移除头像失败', 'error');
   } finally {
-    avatarBusy.value = false;
+    avatarBusyId.value = null;
   }
 }
 
 async function startChat(charId: string) {
-  const conv = await api.createConversation({ characterIds: [charId] });
-  await store.refresh();
-  router.push(`/chat/${conv.id}`);
+  startingId.value = charId;
+  try {
+    const conv = await api.createConversation({ characterIds: [charId] });
+    await store.refresh();
+    router.push(`/chat/${conv.id}`);
+  } catch (err) {
+    store.notify(err instanceof ApiError ? err.message : '发起对话失败', 'error');
+  } finally {
+    startingId.value = null;
+  }
 }
 </script>
 
@@ -185,7 +212,16 @@ async function startChat(charId: string) {
       </div>
     </header>
 
-    <EmptyState v-if="!store.user" icon="mdi-book-heart-outline" title="登录后创建你的私有 OC" description="私有自设角色与头像完全隔离，仅对你自己可见。">
+    <div v-if="store.loading || (store.user && loading && !data)" class="cp-loading-state">
+      <M3Loader :size="44" contained label="正在加载自设角色" />
+    </div>
+
+    <EmptyState
+      v-else-if="!store.user"
+      icon="mdi-book-heart-outline"
+      title="登录后创建你的私有 OC"
+      description="私有自设角色与头像完全隔离，仅对你自己可见。"
+    >
       <template #action>
         <v-btn color="primary" @click="store.openAuth('login')">立即登录</v-btn>
       </template>
@@ -200,7 +236,7 @@ async function startChat(charId: string) {
             :name="ch.name"
             :avatar="ch.avatar"
             :color="ch.color"
-            :busy="avatarBusy"
+            :busy="avatarBusyId === ch.id"
             @upload="(f) => onUploadAvatar(ch.id, f)"
             @clear="onClearAvatar(ch.id)"
           />
@@ -213,17 +249,14 @@ async function startChat(charId: string) {
             </div>
             <div class="text-body-small cp-faint">@{{ ch.slug }}</div>
           </div>
-          <v-menu location="bottom end">
-            <template #activator="{ props: menuProps }">
-              <v-btn v-bind="menuProps" icon variant="text" size="small" class="cp-more" aria-label="更多操作">
-                <v-icon icon="mdi-dots-vertical" size="20" />
-              </v-btn>
-            </template>
-            <v-list density="comfortable" min-width="160">
-              <v-list-item prepend-icon="mdi-pencil-outline" title="编辑" @click="openEdit(ch)" />
-              <v-list-item prepend-icon="mdi-delete-outline" title="删除" base-color="error" @click="handleDelete(ch.id)" />
-            </v-list>
-          </v-menu>
+          <v-btn
+            icon="mdi-delete-outline"
+            variant="text"
+            size="small"
+            class="cp-more cp-more--del"
+            aria-label="删除角色"
+            @click="handleDelete(ch)"
+          />
         </div>
 
         <p class="cp-char-card__desc">{{ ch.description || '暂无简介' }}</p>
@@ -232,13 +265,14 @@ async function startChat(charId: string) {
           <span v-for="tag in ch.tags" :key="tag" class="cp-tag">{{ tag }}</span>
         </div>
 
-        <div class="d-flex ga-2">
+        <div class="d-flex ga-2 mt-auto">
           <v-btn
             color="primary"
             variant="tonal"
             class="flex-grow-1"
             prepend-icon="mdi-message-outline"
             :disabled="!ch.active"
+            :loading="startingId === ch.id"
             @click="startChat(ch.id)"
           >
             开始对话
@@ -254,20 +288,22 @@ async function startChat(charId: string) {
         class="cp-new-card"
         @click="openCreate"
       >
-        <span class="cp-new-card__icon"><v-icon icon="mdi-plus" size="28" /></span>
+        <span class="cp-new-card__icon"><v-icon icon="mdi-plus" size="26" /></span>
         <span class="text-title-medium font-weight-bold">新建自设角色</span>
         <span class="text-body-small cp-faint">还可创建 {{ data.slots.remaining }} 个</span>
       </button>
     </div>
 
     <EmptyState
-      v-else-if="!loading"
+      v-else
       icon="mdi-book-heart-outline"
       title="还没有创建自设角色"
       description="编写专属于你的性格、开场白，并为它挑选模型。"
     >
       <template #action>
-        <v-btn color="primary" prepend-icon="mdi-plus" @click="openCreate">创建第一个自设角色</v-btn>
+        <v-btn color="primary" prepend-icon="mdi-plus" :disabled="Boolean(data && data.slots.remaining <= 0)" @click="openCreate">
+          {{ data && data.slots.remaining <= 0 ? '暂无可用槽位' : '创建第一个自设角色' }}
+        </v-btn>
       </template>
     </EmptyState>
 
@@ -373,7 +409,7 @@ async function startChat(charId: string) {
   height: 100%;
   border-radius: inherit;
   background: rgb(var(--v-theme-primary));
-  transition: width var(--cp-spring-slow);
+  transition: width var(--cp-motion-slow);
 }
 
 .cp-char-card.is-off .cp-char-card__desc,
@@ -407,14 +443,17 @@ async function startChat(charId: string) {
   background: currentColor;
 }
 .cp-more {
-  margin: -6px -8px 0 0;
+  margin: -4px -6px 0 0;
   color: rgb(var(--v-theme-on-surface-variant));
+}
+.cp-more--del:hover {
+  color: rgb(var(--v-theme-error));
 }
 .cp-btn-quiet {
   border-color: rgb(var(--v-theme-outline-variant)) !important;
 }
 
-/* Add-new tile, same footprint as a card */
+/* Add-new tile */
 .cp-new-card {
   position: relative;
   min-height: 220px;
@@ -424,43 +463,47 @@ async function startChat(charId: string) {
   justify-content: center;
   gap: 6px;
   padding: 24px;
-  border: 2px dashed rgb(var(--v-theme-outline-variant));
+  border: 1.5px dashed rgb(var(--v-theme-outline-variant));
   border-radius: var(--cp-radius-lg);
   background: transparent;
   color: rgb(var(--v-theme-on-surface));
   cursor: pointer;
   overflow: hidden;
-  transition: border-radius var(--cp-spring), background-color var(--cp-fx), border-color var(--cp-fx);
+  transition: background-color var(--cp-fx), border-color var(--cp-fx), transform var(--cp-fx);
 }
 .cp-new-card:hover {
-  border-radius: 28px;
   border-color: rgb(var(--v-theme-primary));
   background: rgba(var(--v-theme-primary), 0.04);
+  transform: translateY(-1px);
 }
 .cp-new-card__icon {
-  width: 56px;
-  height: 56px;
+  width: 52px;
+  height: 52px;
   display: grid;
   place-items: center;
   margin-bottom: 6px;
-  border-radius: 16px;
+  border-radius: var(--cp-radius-lg);
   color: rgb(var(--v-theme-on-primary-container));
   background: rgb(var(--v-theme-primary-container));
-  transition: border-radius var(--cp-spring);
-}
-.cp-new-card:hover .cp-new-card__icon {
-  border-radius: 28px;
 }
 
 /* Dialog */
+.cp-oc-dialog {
+  display: flex;
+  flex-direction: column;
+  max-height: 90dvh;
+}
 .cp-oc-dialog__head {
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 24px 16px 8px 24px;
+  padding: 22px 16px 8px 24px;
 }
 .cp-oc-dialog__body {
-  padding: 8px 24px 8px;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 8px 24px;
   overflow-y: auto;
 }
 .cp-oc-dialog__body :deep(.v-input) {
@@ -473,6 +516,7 @@ async function startChat(charId: string) {
   padding-block: 0;
 }
 .cp-oc-dialog__foot {
+  flex: none;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -492,18 +536,20 @@ async function startChat(charId: string) {
 }
 .cp-swatch {
   position: relative;
-  width: 40px;
-  height: 40px;
+  width: 38px;
+  height: 38px;
   display: grid;
   place-items: center;
   border: 0;
   border-radius: 50%;
   cursor: pointer;
   overflow: hidden;
-  transition: border-radius var(--cp-spring-fast), box-shadow var(--cp-fx);
+  transition: transform var(--cp-fx-fast), box-shadow var(--cp-fx);
+}
+.cp-swatch:hover {
+  transform: scale(1.06);
 }
 .cp-swatch.is-on {
-  border-radius: 12px;
   box-shadow: 0 0 0 2px rgb(var(--v-theme-surface-container-high)), 0 0 0 4px rgb(var(--v-theme-on-surface));
 }
 .cp-swatch--custom {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { initialsOf } from '../../lib/display';
 
 const props = defineProps<{
@@ -12,6 +12,13 @@ const props = defineProps<{
 }>();
 
 const failed = ref(false);
+watch(
+  () => props.avatar,
+  () => {
+    failed.value = false;
+  }
+);
+
 const bg = computed(() => props.color?.trim() || '#245C50');
 const px = computed(() => props.size ?? 40);
 
@@ -32,7 +39,7 @@ const fallbackStyle = computed(() => ({
 <template>
   <v-avatar
     :size="px"
-:rounded="rounded"
+    :rounded="rounded"
     :style="{ '--cp-av-r': `${Math.max(8, Math.round(px * 0.28))}px` }"
     :color="avatar && !failed ? 'surface-light' : undefined"
     class="cp-avatar flex-shrink-0"
@@ -47,14 +54,10 @@ const fallbackStyle = computed(() => ({
 .cp-avatar {
   overflow: hidden;
 }
-/* Rounded-rectangle avatars keep the same corner proportion at every size */
 .cp-avatar.rounded-lg {
   border-radius: var(--cp-av-r) !important;
 }
-/* Rounded-rectangle avatars keep the same proportion at every size */
-
 .cp-avatar--ring {
-  /* The ring matches whatever surface the avatar sits on (set --cp-ring there). */
   box-shadow: 0 0 0 2px var(--cp-ring, rgb(var(--v-theme-surface)));
 }
 .cp-avatar__fallback {

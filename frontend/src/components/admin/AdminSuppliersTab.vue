@@ -64,12 +64,19 @@ const modForm = reactive({
   kind: 'language' as ModelKind,
   capabilities: ['text'] as ModelCapability[],
   reasoningEffort: 'default' as ReasoningEffort,
-  thinkingBudget: '' as string,
+  thinkingBudget: '' as string | number,
   contextWindow: 32768,
   maxOutput: 2048,
-  temperature: '' as string,
+  temperature: '' as string | number,
   active: true,
 });
+
+function parseOptionalNumber(raw: string | number | null | undefined): number | null {
+  const s = String(raw ?? '').trim();
+  if (!s) return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
 
 function openCreateSup() {
   editingSupId.value = null;
@@ -92,18 +99,28 @@ function openEditSup(s: SupplierConfig) {
 }
 
 async function saveSup() {
+  if (!supForm.name.trim() || !supForm.baseUrl.trim()) {
+    store.notify('请填写供应商名称和 Base URL', 'error');
+    return;
+  }
   supBusy.value = true;
   try {
     if (editingSupId.value) {
       await api.adminUpdateSupplier(editingSupId.value, {
-        name: supForm.name,
+        name: supForm.name.trim(),
         protocol: supForm.protocol,
-        baseUrl: supForm.baseUrl,
+        baseUrl: supForm.baseUrl.trim(),
         apiKey: supForm.apiKey ? supForm.apiKey : undefined,
         active: supForm.active,
       });
     } else {
-      await api.adminCreateSupplier({ ...supForm });
+      await api.adminCreateSupplier({
+        name: supForm.name.trim(),
+        protocol: supForm.protocol,
+        baseUrl: supForm.baseUrl.trim(),
+        apiKey: supForm.apiKey || undefined,
+        active: supForm.active,
+      });
     }
     supOpen.value = false;
     emit('refresh');
@@ -115,10 +132,16 @@ async function saveSup() {
   }
 }
 
-async function delSup(id: string) {
-  if (!window.confirm('删除供应商会同时下线其关联的模型配置，确认继续？')) return;
+async function delSup(s: SupplierConfig) {
+  const ok = await store.confirm({
+    title: '删除供应商',
+    message: `删除供应商「${s.name}」会同时下线其关联的模型配置，确认继续？`,
+    confirmText: '确认删除',
+    tone: 'error',
+  });
+  if (!ok) return;
   try {
-    await api.adminDeleteSupplier(id);
+    await api.adminDeleteSupplier(s.id);
     emit('refresh');
     store.notify('供应商已删除', 'info');
   } catch (err) {
@@ -159,19 +182,24 @@ function openEditMod(m: ProviderConfig) {
 }
 
 async function saveMod() {
+  if (!modForm.name.trim() || !modForm.supplierId || !modForm.model.trim()) {
+    store.notify('请填写展示名称、所属供应商与远程模型 ID', 'error');
+    return;
+  }
   modBusy.value = true;
   try {
+    const isLang = modForm.kind === 'language';
     const payload = {
-      name: modForm.name,
+      name: modForm.name.trim(),
       supplierId: modForm.supplierId,
-      model: modForm.model,
+      model: modForm.model.trim(),
       kind: modForm.kind,
-      capabilities: modForm.capabilities,
-      reasoningEffort: modForm.reasoningEffort,
-      thinkingBudget: modForm.thinkingBudget.trim() ? Number(modForm.thinkingBudget) : null,
-      contextWindow: Number(modForm.contextWindow),
-      maxOutput: Number(modForm.maxOutput),
-      temperature: modForm.temperature.trim() ? Number(modForm.temperature) : null,
+      capabilities: isLang ? modForm.capabilities : ['text'],
+      reasoningEffort: isLang ? modForm.reasoningEffort : 'default',
+      thinkingBudget: isLang ? parseOptionalNumber(modForm.thinkingBudget) : null,
+      contextWindow: Number(modForm.contextWindow) || 32768,
+      maxOutput: isLang ? Number(modForm.maxOutput) || 2048 : 2048,
+      temperature: isLang ? parseOptionalNumber(modForm.temperature) : null,
       active: modForm.active,
     };
     if (editingModId.value) {
@@ -189,11 +217,18 @@ async function saveMod() {
   }
 }
 
-async function delMod(id: string) {
-  if (!window.confirm('确认删除该模型配置吗？')) return;
+async function delMod(m: ProviderConfig) {
+  const ok = await store.confirm({
+    title: '删除模型配置',
+    message: `确认删除模型「${m.name}」吗？`,
+    confirmText: '确认删除',
+    tone: 'error',
+  });
+  if (!ok) return;
   try {
-    await api.adminDeleteModel(id);
+    await api.adminDeleteModel(m.id);
     emit('refresh');
+    store.notify('模型已删除', 'info');
   } catch (err) {
     store.notify(err instanceof ApiError ? err.message : '删除失败', 'error');
   }
@@ -218,7 +253,7 @@ async function testMod(id: string) {
 <template>
   <div class="d-flex flex-column ga-5">
     <!-- Suppliers -->
-    <v-card border class="pa-5">
+    <v-card rounded="xl" class="pa-5">
       <div class="d-flex align-center justify-space-between ga-3 flex-wrap mb-4">
         <div>
           <h3 class="text-title-medium font-weight-bold">上游供应商（Suppliers）</h3>
@@ -231,7 +266,7 @@ async function testMod(id: string) {
 
       <v-row v-if="suppliers.length" density="compact">
         <v-col v-for="s in suppliers" :key="s.id" cols="12" sm="6" lg="4">
-          <v-card color="surface-light" rounded="lg" class="pa-4 h-100 d-flex flex-column justify-space-between ga-3">
+          <v-card color="surface-container" rounded="lg" class="pa-4 h-100 d-flex flex-column justify-space-between ga-3">
             <div>
               <div class="d-flex align-center ga-2 flex-wrap mb-2">
                 <span class="font-weight-bold text-body-large">{{ s.name }}</span>
@@ -248,7 +283,7 @@ async function testMod(id: string) {
               <v-btn size="small" variant="outlined" prepend-icon="mdi-pencil-outline" @click="openEditSup(s)">
                 编辑
               </v-btn>
-              <v-btn size="small" variant="tonal" color="error" icon="mdi-delete-outline" aria-label="删除供应商" @click="delSup(s.id)" />
+              <v-btn size="small" variant="tonal" color="error" icon="mdi-delete-outline" aria-label="删除供应商" @click="delSup(s)" />
             </div>
           </v-card>
         </v-col>
@@ -257,7 +292,7 @@ async function testMod(id: string) {
     </v-card>
 
     <!-- Models -->
-    <v-card border class="pa-5">
+    <v-card rounded="xl" class="pa-5">
       <div class="d-flex align-center justify-space-between ga-3 flex-wrap mb-4">
         <div>
           <h3 class="text-title-medium font-weight-bold">模型列表（Models）</h3>
@@ -270,7 +305,7 @@ async function testMod(id: string) {
 
       <v-row v-if="models.length" density="compact">
         <v-col v-for="m in models" :key="m.id" cols="12" sm="6" lg="4">
-          <v-card color="surface-light" rounded="lg" class="pa-4 h-100 d-flex flex-column justify-space-between ga-3">
+          <v-card color="surface-container" rounded="lg" class="pa-4 h-100 d-flex flex-column justify-space-between ga-3">
             <div>
               <div class="d-flex align-center ga-2 flex-wrap mb-2">
                 <span class="font-weight-bold text-body-large">{{ m.name }}</span>
@@ -281,8 +316,11 @@ async function testMod(id: string) {
               </div>
               <div class="text-body-small text-medium-emphasis d-flex flex-column ga-1">
                 <div>供应商：{{ m.supplierName }} ({{ m.protocol }})</div>
-                <div>模型 ID：<code class="font-mono">{{ m.model }}</code> · 窗口 {{ m.contextWindow }} / 输出 {{ m.maxOutput }}</div>
-                <div>能力：{{ m.capabilities.join(', ') || 'text' }} · 思考：{{ m.reasoningEffort }}</div>
+                <div>
+                  模型 ID：<code class="font-mono">{{ m.model }}</code> · 窗口 {{ m.contextWindow }}
+                  <template v-if="m.kind === 'language'"> / 输出 {{ m.maxOutput }}</template>
+                </div>
+                <div v-if="m.kind === 'language'">能力：{{ m.capabilities.join(', ') || 'text' }} · 思考：{{ m.reasoningEffort }}</div>
               </div>
             </div>
             <div class="d-flex ga-2 flex-wrap">
@@ -299,7 +337,7 @@ async function testMod(id: string) {
               <v-btn size="small" variant="outlined" prepend-icon="mdi-pencil-outline" @click="openEditMod(m)">
                 编辑
               </v-btn>
-              <v-btn size="small" variant="tonal" color="error" icon="mdi-delete-outline" aria-label="删除模型" @click="delMod(m.id)" />
+              <v-btn size="small" variant="tonal" color="error" icon="mdi-delete-outline" aria-label="删除模型" @click="delMod(m)" />
             </div>
           </v-card>
         </v-col>
@@ -308,11 +346,11 @@ async function testMod(id: string) {
     </v-card>
 
     <!-- Supplier Dialog -->
-    <v-dialog v-model="supOpen" max-width="540">
+    <v-dialog v-model="supOpen" max-width="540" scrollable>
       <v-card class="pa-2">
         <v-card-title class="d-flex align-center justify-space-between">
           <span class="font-weight-bold">{{ editingSupId ? '编辑供应商' : '新增供应商' }}</span>
-          <v-btn icon="mdi-close" variant="text" size="small" @click="supOpen = false" />
+          <v-btn icon="mdi-close" variant="text" size="small" aria-label="关闭" @click="supOpen = false" />
         </v-card-title>
         <v-card-text>
           <v-form id="cp-supplier-form" class="d-flex flex-column ga-4" @submit.prevent="saveSup">
@@ -337,11 +375,11 @@ async function testMod(id: string) {
     </v-dialog>
 
     <!-- Model Dialog -->
-    <v-dialog v-model="modOpen" max-width="760">
+    <v-dialog v-model="modOpen" max-width="760" scrollable>
       <v-card class="pa-2">
         <v-card-title class="d-flex align-center justify-space-between">
           <span class="font-weight-bold">{{ editingModId ? '编辑模型' : '新增模型' }}</span>
-          <v-btn icon="mdi-close" variant="text" size="small" @click="modOpen = false" />
+          <v-btn icon="mdi-close" variant="text" size="small" aria-label="关闭" @click="modOpen = false" />
         </v-card-title>
         <v-card-text>
           <v-form id="cp-model-form" class="d-flex flex-column ga-4" @submit.prevent="saveMod">
@@ -375,19 +413,19 @@ async function testMod(id: string) {
             </div>
 
             <v-row density="compact">
-              <v-col cols="12" sm="6" md="4">
+              <v-col v-if="modForm.kind === 'language'" cols="12" sm="6" md="4">
                 <v-select v-model="modForm.reasoningEffort" label="推理深度 (Reasoning Effort)" :items="reasoningItems" />
               </v-col>
-              <v-col cols="12" sm="6" md="4">
+              <v-col v-if="modForm.kind === 'language'" cols="12" sm="6" md="4">
                 <v-text-field v-model="modForm.thinkingBudget" label="思考 Token 预算 (可选)" type="number" min="0" placeholder="例如 4096" />
               </v-col>
-              <v-col cols="12" sm="6" md="4">
+              <v-col cols="12" :sm="modForm.kind === 'language' ? 6 : 12" :md="modForm.kind === 'language' ? 4 : 6">
                 <v-text-field v-model.number="modForm.contextWindow" label="上下文窗口" type="number" min="512" required />
               </v-col>
-              <v-col cols="12" sm="6" md="6">
+              <v-col v-if="modForm.kind === 'language'" cols="12" sm="6" md="6">
                 <v-text-field v-model.number="modForm.maxOutput" label="最大输出 Token" type="number" min="64" required />
               </v-col>
-              <v-col cols="12" sm="6" md="6">
+              <v-col v-if="modForm.kind === 'language'" cols="12" sm="6" md="6">
                 <v-text-field v-model="modForm.temperature" label="温度 Temperature (可选)" type="number" step="0.05" min="0" max="2" placeholder="0.8" />
               </v-col>
             </v-row>

@@ -4,6 +4,7 @@ import { VSwitch } from 'vuetify/components';
 import { vuetify } from '../plugins/vuetify';
 import AvatarBadge from '../components/m3/AvatarBadge.vue';
 import EmptyState from '../components/m3/EmptyState.vue';
+import WavyProgress from '../components/m3/WavyProgress.vue';
 import QuotaCard from '../components/QuotaCard.vue';
 
 beforeAll(() => {
@@ -62,5 +63,44 @@ describe('Vuetify 4 MD3 Components', () => {
     expect(nums).toEqual(['38', '460']);
     expect(wrapper.text()).toContain('/ 50 次剩余');
     expect(wrapper.text()).toContain('/ 500 次剩余');
+  });
+
+  it('resets AvatarBadge fallback when avatar url changes', async () => {
+    const wrapper = mount(AvatarBadge, {
+      global: { plugins: [vuetify] },
+      props: { name: 'Pinkie Pie', avatar: '/broken.png', size: 40 },
+    });
+    const img = wrapper.findComponent({ name: 'VImg' });
+    expect(img.exists()).toBe(true);
+    img.vm.$emit('error');
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('.cp-avatar__fallback').exists()).toBe(true);
+
+    await wrapper.setProps({ avatar: '/fixed.png' });
+    expect(wrapper.find('.cp-avatar__fallback').exists()).toBe(false);
+    expect(wrapper.findComponent({ name: 'VImg' }).exists()).toBe(true);
+  });
+
+  it('renders QuotaCard compact zero-limit bar at 0% and WavyProgress full state cleanly', () => {
+    const compact = mount(QuotaCard, {
+      global: { plugins: [vuetify] },
+      props: {
+        compact: true,
+        quota: {
+          fiveHour: { used: 0, limit: 0, remaining: 0, resetsAt: null },
+          sevenDay: { used: 0, limit: 100, remaining: 100, resetsAt: null },
+        },
+      },
+    });
+    const fills = compact.findAll('.cp-meter__fill');
+    expect(fills[0]?.attributes('style')).toContain('width: 0%');
+    expect(fills[1]?.attributes('style')).toContain('width: 100%');
+
+    const fullWave = mount(WavyProgress, {
+      global: { plugins: [vuetify] },
+      props: { value: 50, max: 50 },
+    });
+    expect(fullWave.classes()).toContain('is-full');
+    expect(fullWave.find('.cp-wavy__track').exists()).toBe(false);
   });
 });

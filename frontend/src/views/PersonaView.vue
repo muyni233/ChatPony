@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue';
 import EmptyState from '../components/m3/EmptyState.vue';
+import M3Loader from '../components/m3/M3Loader.vue';
 import { api, ApiError } from '../lib/api';
 import type { UserPersona } from '../lib/types';
 import { useAppStore } from '../stores/app';
@@ -21,14 +22,13 @@ const form = reactive<UserPersona>({
 watch(
   () => store.user?.persona,
   (p) => {
-    if (!p) return;
-    form.enabled = p.enabled;
-    form.name = p.name;
-    form.species = p.species;
-    form.pronouns = p.pronouns;
-    form.appearance = p.appearance;
-    form.personality = p.personality;
-    form.background = p.background;
+    form.enabled = p?.enabled ?? false;
+    form.name = p?.name ?? '';
+    form.species = p?.species ?? '';
+    form.pronouns = p?.pronouns ?? '';
+    form.appearance = p?.appearance ?? '';
+    form.personality = p?.personality ?? '';
+    form.background = p?.background ?? '';
   },
   { immediate: true }
 );
@@ -52,13 +52,22 @@ async function save() {
     <div class="cp-page-header">
       <div>
         <h1 class="cp-page-title">个人设定</h1>
-      <p class="cp-page-subtitle">
-        开启后，你的名称、种族、人称与背景设定会以轻量化参考的方式注入每次对话的系统提示中。
-      </p>
+        <p class="cp-page-subtitle">
+          开启后，你的名称、种族、人称与背景设定会以轻量化参考的方式注入每次对话的系统提示中。
+        </p>
       </div>
     </div>
 
-    <EmptyState v-if="!store.user" icon="mdi-account-badge-outline" title="登录后编辑你的个人设定" description="设定好你的角色形象，让 AI 伙伴记住你的样子。">
+    <div v-if="store.loading" class="cp-loading-state">
+      <M3Loader :size="44" contained label="正在加载个人设定" />
+    </div>
+
+    <EmptyState
+      v-else-if="!store.user"
+      icon="mdi-account-badge-outline"
+      title="登录后编辑你的个人设定"
+      description="设定好你的角色形象，让 AI 伙伴记住你的样子。"
+    >
       <template #action>
         <v-btn color="primary" @click="store.openAuth('login')">立即登录</v-btn>
       </template>
@@ -66,7 +75,7 @@ async function save() {
 
     <v-card v-else class="pa-6">
       <v-form class="d-flex flex-column ga-4" @submit.prevent="save">
-        <v-sheet color="surface-light" rounded="lg" class="pa-4 d-flex align-center justify-space-between ga-4">
+        <v-sheet color="surface-container" rounded="lg" class="pa-4 d-flex align-center justify-space-between ga-4">
           <div>
             <div class="text-title-small font-weight-bold">在对话中注入个人设定</div>
             <div class="text-body-small text-medium-emphasis">仅发送非空字段，总长度自动控制，避免挤压上下文窗口</div>

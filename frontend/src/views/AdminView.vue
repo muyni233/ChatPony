@@ -6,6 +6,7 @@ import AdminMailTab from '../components/admin/AdminMailTab.vue';
 import AdminSuppliersTab from '../components/admin/AdminSuppliersTab.vue';
 import AdminUsersTab from '../components/admin/AdminUsersTab.vue';
 import EmptyState from '../components/m3/EmptyState.vue';
+import M3Loader from '../components/m3/M3Loader.vue';
 import { api, ApiError } from '../lib/api';
 import type {
   AdminOverview,
@@ -36,6 +37,7 @@ const tabs = [
 type TabKey = (typeof tabs)[number]['key'];
 const activeTab = ref<TabKey>('overview');
 
+const loadingData = ref(false);
 const overview = ref<AdminOverview | null>(null);
 const settings = ref<PlatformSettings | null>(null);
 const suppliers = ref<SupplierConfig[]>([]);
@@ -77,8 +79,24 @@ const embeddingModelItems = computed(() => [
   ...embeddingModels.value.map((m) => ({ title: `${m.name} (${m.model})`, value: m.id })),
 ]);
 
+function resetAdminData() {
+  overview.value = null;
+  settings.value = null;
+  settingsForm.value = null;
+  suppliers.value = [];
+  models.value = [];
+  adminChars.value = [];
+  adminUsers.value = [];
+  adminAnnouncements.value = [];
+  embedding.value = null;
+}
+
 async function loadAll() {
-  if (!store.isAdmin) return;
+  if (!store.isAdmin) {
+    resetAdminData();
+    return;
+  }
+  loadingData.value = true;
   try {
     const [ov, st, sups, mods, chars, usrs, anns, emb] = await Promise.all([
       api.adminOverview(),
@@ -107,6 +125,8 @@ async function loadAll() {
     embForm.minSimilarity = emb.minSimilarity;
   } catch (err) {
     store.notify(err instanceof ApiError ? err.message : '加载管理数据失败', 'error');
+  } finally {
+    loadingData.value = false;
   }
 }
 
@@ -126,6 +146,8 @@ async function savePlatformSettings() {
     });
     settings.value = saved;
     settingsForm.value = JSON.parse(JSON.stringify(saved));
+    hiddenSymbolsText.value = saved.hiddenSymbols.join(' ');
+    actionMarkersText.value = saved.actionMarkers.join(' ');
     await store.refresh();
     store.notify('平台设置已保存并同步默认额度', 'success');
   } catch (err) {
@@ -179,12 +201,22 @@ function openEditAnn(a: Announcement) {
 }
 
 async function saveAnn() {
+  if (!annForm.title.trim() || !annForm.content.trim()) {
+    store.notify('请填写公告标题和正文内容', 'error');
+    return;
+  }
   annBusy.value = true;
   try {
+    const payload = {
+      title: annForm.title.trim(),
+      content: annForm.content.trim(),
+      pinned: annForm.pinned,
+      published: annForm.published,
+    };
     if (editingAnnId.value) {
-      await api.adminUpdateAnnouncement(editingAnnId.value, { ...annForm });
+      await api.adminUpdateAnnouncement(editingAnnId.value, payload);
     } else {
-      await api.adminCreateAnnouncement({ ...annForm });
+      await api.adminCreateAnnouncement(payload);
     }
     annOpen.value = false;
     await loadAll();
@@ -197,12 +229,19 @@ async function saveAnn() {
   }
 }
 
-async function delAnn(id: string) {
-  if (!window.confirm('确认删除这条公告吗？')) return;
+async function delAnn(a: Announcement) {
+  const ok = await store.confirm({
+    title: '删除公告',
+    message: `确认删除公告「${a.title}」吗？`,
+    confirmText: '确认删除',
+    tone: 'error',
+  });
+  if (!ok) return;
   try {
-    await api.adminDeleteAnnouncement(id);
+    await api.adminDeleteAnnouncement(a.id);
     await loadAll();
     await store.refresh();
+    store.notify('公告已删除', 'info');
   } catch (err) {
     store.notify(err instanceof ApiError ? err.message : '删除失败', 'error');
   }
@@ -218,8 +257,12 @@ async function delAnn(id: string) {
       </div>
     </div>
 
+    <div v-if="store.loading" class="cp-loading-state">
+      <M3Loader :size="44" contained label="正在校验管理员权限" />
+    </div>
+
     <EmptyState
-      v-if="!store.isAdmin"
+      v-else-if="!store.isAdmin"
       icon="mdi-shield-outline"
       title="需要管理员权限"
       description="当前账号不具备管理权限。"
@@ -227,21 +270,30 @@ async function delAnn(id: string) {
 
     <template v-else>
       <div class="cp-admin-tabs mb-6">
-        <v-tabs v-model="activeTab" color="primary" show-arrows height="56">
+        <v-tabs v-model="activeTab" color="primary" show-arrows height="52">
           <v-tab v-for="t in tabs" :key="t.key" :value="t.key" :prepend-icon="t.icon">
             {{ t.label }}
           </v-tab>
         </v-tabs>
       </div>
 
+      <div v-if="loadingData && !overview && activeTab === 'overview'" class="cp-loading-state">
+        <M3Loader :size="40" contained label="正在加载后台数据" />
+      </div>
+
       <!-- 1. Overview -->
-      <div v-if="activeTab === 'overview' && overview" class="cp-ov">
-        <div v-for="t in [
-          { label: '注册用户', value: overview.users, icon: 'mdi-account-multiple-outline', tone: 'primary' },
-          { label: '官方角色', value: overview.characters, icon: 'mdi-account-star-outline', tone: 'secondary' },
-          { label: '累计会话', value: overview.conversations, icon: 'mdi-message-text-outline', tone: 'tertiary' },
-          { label: '模型调用次数', value: overview.calls, icon: 'mdi-lightning-bolt-outline', tone: 'surface' },
-        ]" :key="t.label" class="cp-ov__tile" :class="`is-${t.tone}`">
+      <div v-else-if="activeTab === 'overview' && overview" class="cp-ov">
+        <div
+          v-for="t in [
+            { label: '注册用户', value: overview.users, icon: 'mdi-account-multiple-outline', tone: 'primary' },
+            { label: '官方角色', value: overview.characters, icon: 'mdi-account-star-outline', tone: 'secondary' },
+            { label: '累计会话', value: overview.conversations, icon: 'mdi-message-text-outline', tone: 'tertiary' },
+            { label: '模型调用次数', value: overview.calls, icon: 'mdi-lightning-bolt-outline', tone: 'surface' },
+          ]"
+          :key="t.label"
+          class="cp-ov__tile"
+          :class="`is-${t.tone}`"
+        >
           <span class="cp-ov__icon"><v-icon :icon="t.icon" size="22" /></span>
           <div class="cp-ov__num">{{ t.value.toLocaleString('zh-CN') }}</div>
           <div class="cp-ov__label">{{ t.label }}</div>
@@ -272,7 +324,7 @@ async function delAnn(id: string) {
       />
 
       <!-- 5. Settings -->
-      <v-card v-else-if="activeTab === 'settings' && settingsForm" border class="pa-5">
+      <v-card v-else-if="activeTab === 'settings' && settingsForm" rounded="xl" class="pa-5">
         <v-form class="d-flex flex-column ga-5" @submit.prevent="savePlatformSettings">
           <div>
             <h3 class="text-title-medium font-weight-bold mb-3">额度、群聊与站点展示</h3>
@@ -365,42 +417,47 @@ async function delAnn(id: string) {
             <h3 class="text-title-medium font-weight-bold mb-3">能力开关</h3>
             <v-row density="compact">
               <v-col cols="12" sm="6" lg="4">
-                <v-sheet color="surface-light" rounded="lg" class="pa-3 px-4">
+                <v-sheet color="surface-container" rounded="lg" class="pa-3 px-4">
                   <v-switch v-model="settingsForm.registrationOpen" label="开放新用户注册" />
                 </v-sheet>
               </v-col>
               <v-col cols="12" sm="6" lg="4">
-                <v-sheet color="surface-light" rounded="lg" class="pa-3 px-4">
+                <v-sheet color="surface-container" rounded="lg" class="pa-3 px-4">
                   <v-switch v-model="settingsForm.streamingEnabled" label="启用流式响应 (SSE)" />
                 </v-sheet>
               </v-col>
               <v-col cols="12" sm="6" lg="4">
-                <v-sheet color="surface-light" rounded="lg" class="pa-3 px-4">
+                <v-sheet color="surface-container" rounded="lg" class="pa-3 px-4">
                   <v-switch v-model="settingsForm.imageInputEnabled" label="允许上传图片识图" />
                 </v-sheet>
               </v-col>
               <v-col cols="12" sm="6" lg="4">
-                <v-sheet color="surface-light" rounded="lg" class="pa-3 px-4">
+                <v-sheet color="surface-container" rounded="lg" class="pa-3 px-4">
                   <v-switch v-model="settingsForm.actionStyleEnabled" label="启用动作描写斜体样式" />
                 </v-sheet>
               </v-col>
               <v-col cols="12" sm="6" lg="4">
-                <v-sheet color="surface-light" rounded="lg" class="pa-3 px-4">
+                <v-sheet color="surface-container" rounded="lg" class="pa-3 px-4">
+                  <v-switch v-model="settingsForm.actionHideMarkers" label="隐藏动作描写标记符号" />
+                </v-sheet>
+              </v-col>
+              <v-col cols="12" sm="6" lg="4">
+                <v-sheet color="surface-container" rounded="lg" class="pa-3 px-4">
                   <v-switch v-model="settingsForm.automaticMemoryEnabled" label="开启自动记忆提取" />
                 </v-sheet>
               </v-col>
               <v-col cols="12" sm="6" lg="4">
-                <v-sheet color="surface-light" rounded="lg" class="pa-3 px-4">
+                <v-sheet color="surface-container" rounded="lg" class="pa-3 px-4">
                   <v-switch v-model="settingsForm.memoryStructuredExtraction" label="启用结构化记忆抽取" />
                 </v-sheet>
               </v-col>
               <v-col cols="12" sm="6" lg="4">
-                <v-sheet color="surface-light" rounded="lg" class="pa-3 px-4">
+                <v-sheet color="surface-container" rounded="lg" class="pa-3 px-4">
                   <v-switch v-model="settingsForm.metadataEnabled" label="注入日历与节气元数据" />
                 </v-sheet>
               </v-col>
               <v-col cols="12" sm="6" lg="4">
-                <v-sheet color="surface-light" rounded="lg" class="pa-3 px-4">
+                <v-sheet color="surface-container" rounded="lg" class="pa-3 px-4">
                   <v-switch v-model="settingsForm.auditCaptureContent" label="审计采集请求/响应全文" />
                 </v-sheet>
               </v-col>
@@ -416,10 +473,10 @@ async function delAnn(id: string) {
       </v-card>
 
       <!-- 6. Embedding & Memory params -->
-      <v-card v-else-if="activeTab === 'embedding'" border class="pa-5">
+      <v-card v-else-if="activeTab === 'embedding'" rounded="xl" class="pa-5">
         <h3 class="text-title-medium font-weight-bold mb-4">向量嵌入（Embedding）与语义召回设置</h3>
         <v-form class="d-flex flex-column ga-4" @submit.prevent="saveEmbedding">
-          <v-sheet color="surface-light" rounded="lg" class="pa-3 px-4 d-flex align-center justify-space-between ga-3">
+          <v-sheet color="surface-container" rounded="lg" class="pa-3 px-4 d-flex align-center justify-space-between ga-3">
             <div>
               <div class="text-body-large font-weight-medium">启用混合语义向量检索</div>
               <div class="text-body-small text-medium-emphasis">与 SQLite FTS5 trigram 协同工作，按模型指纹自动更新向量</div>
@@ -456,7 +513,7 @@ async function delAnn(id: string) {
       </v-card>
 
       <!-- 7. Announcements -->
-      <v-card v-else-if="activeTab === 'announcements'" border class="pa-5">
+      <v-card v-else-if="activeTab === 'announcements'" rounded="xl" class="pa-5">
         <div class="d-flex align-center justify-space-between ga-3 flex-wrap mb-4">
           <h3 class="text-title-medium font-weight-bold">站内公告管理（{{ adminAnnouncements.length }}）</h3>
           <v-btn color="primary" size="small" prepend-icon="mdi-plus" @click="openCreateAnn">发布新公告</v-btn>
@@ -466,7 +523,7 @@ async function delAnn(id: string) {
           <v-sheet
             v-for="a in adminAnnouncements"
             :key="a.id"
-            color="surface-light"
+            color="surface-container"
             rounded="lg"
             class="pa-3 px-4 d-flex align-center ga-3 flex-wrap"
           >
@@ -482,17 +539,17 @@ async function delAnn(id: string) {
             </div>
             <div class="d-flex ga-2">
               <v-btn size="small" variant="outlined" icon="mdi-pencil-outline" aria-label="编辑公告" @click="openEditAnn(a)" />
-              <v-btn size="small" variant="tonal" color="error" icon="mdi-delete-outline" aria-label="删除公告" @click="delAnn(a.id)" />
+              <v-btn size="small" variant="tonal" color="error" icon="mdi-delete-outline" aria-label="删除公告" @click="delAnn(a)" />
             </div>
           </v-sheet>
         </div>
         <div v-else class="text-body-medium text-medium-emphasis">暂无站内公告。</div>
 
-        <v-dialog v-model="annOpen" max-width="580">
+        <v-dialog v-model="annOpen" max-width="580" scrollable>
           <v-card class="pa-2">
             <v-card-title class="d-flex align-center justify-space-between">
               <span class="font-weight-bold">{{ editingAnnId ? '编辑公告' : '发布公告' }}</span>
-              <v-btn icon="mdi-close" variant="text" size="small" @click="annOpen = false" />
+              <v-btn icon="mdi-close" variant="text" size="small" aria-label="关闭" @click="annOpen = false" />
             </v-card-title>
             <v-card-text>
               <v-form id="cp-ann-form" class="d-flex flex-column ga-4" @submit.prevent="saveAnn">
@@ -523,7 +580,6 @@ async function delAnn(id: string) {
 </template>
 
 <style scoped>
-/* Tabs sit on the page, M3 primary tabs with a divider */
 .cp-admin-tabs {
   border-bottom: 1px solid rgb(var(--v-theme-outline-variant));
 }
@@ -535,15 +591,6 @@ async function delAnn(id: string) {
 .cp-admin-tabs :deep(.v-tab__slider) {
   height: 3px;
   border-radius: 3px 3px 0 0;
-}
-/* Admin cards: filled, no outlines */
-.cp-admin :deep(.v-card.border) {
-  border: 0 !important;
-  border-radius: var(--cp-radius-xl) !important;
-}
-.cp-admin :deep(.v-card.bg-surface-light) {
-  background: rgb(var(--v-theme-surface-container)) !important;
-  border-radius: var(--cp-radius-lg) !important;
 }
 
 .cp-ov {
@@ -559,10 +606,6 @@ async function delAnn(id: string) {
 .cp-ov__tile {
   padding: 20px 20px 18px;
   border-radius: var(--cp-radius-xl);
-  transition: border-radius var(--cp-spring);
-}
-.cp-ov__tile:hover {
-  border-radius: var(--cp-radius-lg);
 }
 .cp-ov__tile.is-primary {
   color: rgb(var(--v-theme-on-primary-container));
@@ -584,13 +627,13 @@ async function delAnn(id: string) {
   place-items: center;
   width: 40px;
   height: 40px;
-  margin-bottom: 18px;
-  border-radius: 12px;
-  background: rgba(var(--v-theme-surface-container-lowest), 0.55);
+  margin-bottom: 16px;
+  border-radius: var(--cp-radius-md);
+  background: rgba(var(--v-theme-on-surface), 0.08);
 }
 .cp-ov__num {
-  font-size: 2.25rem;
-  line-height: 2.75rem;
+  font-size: 2.125rem;
+  line-height: 2.625rem;
   font-weight: 600;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
@@ -598,6 +641,6 @@ async function delAnn(id: string) {
 .cp-ov__label {
   margin-top: 2px;
   font-size: 0.875rem;
-  opacity: 0.8;
+  opacity: 0.82;
 }
 </style>

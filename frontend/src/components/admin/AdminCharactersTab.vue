@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue';
 import AvatarEditorButton from '../AvatarEditorButton.vue';
-import AvatarBadge from '../m3/AvatarBadge.vue';
 import { api, ApiError } from '../../lib/api';
 import type { Character, ProviderConfig } from '../../lib/types';
 import { useAppStore } from '../../stores/app';
@@ -22,7 +21,7 @@ const modelItems = computed(() => [
 const modalOpen = ref(false);
 const editingId = ref<string | null>(null);
 const saveBusy = ref(false);
-const avatarBusy = ref(false);
+const avatarBusyId = ref<string | null>(null);
 const form = reactive({
   name: '',
   slug: '',
@@ -64,11 +63,19 @@ function openEdit(c: Character) {
 }
 
 async function save() {
+  if (!form.name.trim()) {
+    store.notify('请填写角色名称', 'error');
+    return;
+  }
+  if (!form.personality.trim()) {
+    store.notify('请填写系统人设', 'error');
+    return;
+  }
   saveBusy.value = true;
   const tags = form.tagsText.split(/[，,]/).map((s) => s.trim()).filter(Boolean);
   const payload = {
-    name: form.name,
-    slug: form.slug || undefined,
+    name: form.name.trim(),
+    slug: form.slug.trim() || undefined,
     description: form.description,
     color: form.color,
     tags,
@@ -94,60 +101,80 @@ async function save() {
   }
 }
 
-async function removeChar(id: string) {
-  if (!window.confirm('确认下线并移除该角色吗？历史会话记录仍会保留。')) return;
+async function removeChar(c: Character) {
+  const ok = await store.confirm({
+    title: '移除官方角色',
+    message: `确认下线并移除角色「${c.name}」吗？历史会话记录仍会保留。`,
+    confirmText: '确认移除',
+    tone: 'error',
+  });
+  if (!ok) return;
   try {
-    await api.adminDeleteCharacter(id);
+    await api.adminDeleteCharacter(c.id);
     emit('refresh');
     await store.refresh();
+    store.notify('角色已移除', 'info');
   } catch (err) {
     store.notify(err instanceof ApiError ? err.message : '删除失败', 'error');
   }
 }
 
 async function onUploadAvatar(id: string, file: File) {
-  avatarBusy.value = true;
+  avatarBusyId.value = id;
   try {
     await api.adminUploadCharacterAvatar(id, file);
     emit('refresh');
     await store.refresh();
+    store.notify('角色头像已更新', 'success');
   } catch (err) {
     store.notify(err instanceof ApiError ? err.message : '上传失败', 'error');
   } finally {
-    avatarBusy.value = false;
+    avatarBusyId.value = null;
   }
 }
 
 async function onClearAvatar(id: string) {
-  avatarBusy.value = true;
+  avatarBusyId.value = id;
   try {
     await api.adminDeleteCharacterAvatar(id);
     emit('refresh');
     await store.refresh();
+    store.notify('已移除角色头像', 'info');
+  } catch (err) {
+    store.notify(err instanceof ApiError ? err.message : '移除头像失败', 'error');
   } finally {
-    avatarBusy.value = false;
+    avatarBusyId.value = null;
   }
 }
 </script>
 
 <template>
-  <v-card border class="pa-5">
+  <v-card rounded="xl" class="pa-5">
     <div class="d-flex align-center justify-space-between ga-3 flex-wrap mb-4">
       <div>
         <h3 class="text-title-medium font-weight-bold">官方角色馆（{{ characters.length }}）</h3>
-        <div class="text-body-medium text-medium-emphasis">维护平台公开发布角色与头像配置</div>
+        <div class="text-body-medium text-medium-emphasis">维护平台公开发布角色与头像配置，点击头像可直接更换</div>
       </div>
       <v-btn color="primary" prepend-icon="mdi-plus" size="small" @click="openCreate">新建官方角色</v-btn>
     </div>
 
-    <v-row density="compact">
+    <v-row v-if="characters.length" density="compact">
       <v-col v-for="c in characters" :key="c.id" cols="12" sm="6" lg="4">
-        <v-card color="surface-light" rounded="lg" class="pa-4 h-100 d-flex flex-column ga-3">
+        <v-card color="surface-container" rounded="lg" class="pa-4 h-100 d-flex flex-column ga-3">
           <div class="d-flex align-center ga-3">
-            <AvatarBadge :name="c.name" :avatar="c.avatar" :color="c.color" :size="48" />
+            <AvatarEditorButton
+              compact
+              :size="52"
+              :name="c.name"
+              :avatar="c.avatar"
+              :color="c.color"
+              :busy="avatarBusyId === c.id"
+              @upload="(f) => onUploadAvatar(c.id, f)"
+              @clear="onClearAvatar(c.id)"
+            />
             <div class="min-width-0 flex-1-1">
               <div class="d-flex align-center ga-2 flex-wrap">
-                <span class="font-weight-bold text-body-large">{{ c.name }}</span>
+                <span class="font-weight-bold text-body-large text-truncate">{{ c.name }}</span>
                 <v-chip size="x-small" :color="c.active ? 'success' : 'default'" variant="tonal">
                   {{ c.active ? '公开' : '未启用' }}
                 </v-chip>
@@ -156,16 +183,7 @@ async function onClearAvatar(id: string) {
             </div>
           </div>
 
-          <AvatarEditorButton
-            :name="c.name"
-            :avatar="c.avatar"
-            :color="c.color"
-            :busy="avatarBusy"
-            @upload="(f) => onUploadAvatar(c.id, f)"
-            @clear="onClearAvatar(c.id)"
-          />
-
-          <p class="text-body-medium text-medium-emphasis mb-0 flex-1-1">{{ c.description || '暂无简介' }}</p>
+          <p class="text-body-medium text-medium-emphasis mb-0 flex-1-1 line-clamp-3">{{ c.description || '暂无简介' }}</p>
 
           <div class="d-flex ga-2 mt-auto">
             <v-btn
@@ -184,18 +202,19 @@ async function onClearAvatar(id: string) {
               color="error"
               icon="mdi-delete-outline"
               aria-label="移除角色"
-              @click="removeChar(c.id)"
+              @click="removeChar(c)"
             />
           </div>
         </v-card>
       </v-col>
     </v-row>
+    <div v-else class="text-body-medium text-medium-emphasis">暂无官方角色，点击右上角创建。</div>
 
-    <v-dialog v-model="modalOpen" max-width="760">
+    <v-dialog v-model="modalOpen" max-width="760" scrollable>
       <v-card class="pa-2">
         <v-card-title class="d-flex align-center justify-space-between">
           <span class="font-weight-bold">{{ editingId ? '编辑官方角色' : '新建官方角色' }}</span>
-          <v-btn icon="mdi-close" variant="text" size="small" @click="modalOpen = false" />
+          <v-btn icon="mdi-close" variant="text" size="small" aria-label="关闭" @click="modalOpen = false" />
         </v-card-title>
         <v-card-text>
           <v-form id="cp-admin-char-form" class="d-flex flex-column ga-4" @submit.prevent="save">

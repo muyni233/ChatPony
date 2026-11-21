@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { reactive, ref, watch } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import AvatarEditorButton from '../components/AvatarEditorButton.vue';
 import QuotaCard from '../components/QuotaCard.vue';
 import EmptyState from '../components/m3/EmptyState.vue';
+import M3Loader from '../components/m3/M3Loader.vue';
 import { api, ApiError } from '../lib/api';
 import { useAppStore } from '../stores/app';
 
@@ -26,10 +27,22 @@ const commonTimezones = [
   'UTC',
 ];
 
+const timezoneItems = computed(() => {
+  const list = [...commonTimezones];
+  const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  if (browserTz && !list.includes(browserTz)) list.unshift(browserTz);
+  if (profile.timezone && !list.includes(profile.timezone)) list.unshift(profile.timezone);
+  return list;
+});
+
 watch(
   () => store.user,
   (u) => {
-    if (!u) return;
+    if (!u) {
+      profile.name = '';
+      profile.timezone = 'Asia/Shanghai';
+      return;
+    }
     profile.name = u.name;
     profile.timezone = u.timezone || 'Asia/Shanghai';
   },
@@ -37,9 +50,14 @@ watch(
 );
 
 async function saveProfile() {
+  const trimmedName = profile.name.trim();
+  if (!trimmedName) {
+    store.notify('显示昵称不能为空', 'error');
+    return;
+  }
   profileBusy.value = true;
   try {
-    const res = await api.updateAccount({ name: profile.name, timezone: profile.timezone });
+    const res = await api.updateAccount({ name: trimmedName, timezone: profile.timezone });
     store.setUser(res.user);
     store.notify('账户资料已更新', 'success');
   } catch (err) {
@@ -76,6 +94,14 @@ async function onClearAvatar() {
 }
 
 async function submitPassword() {
+  if (!pwForm.currentPassword) {
+    store.notify('请输入当前密码', 'error');
+    return;
+  }
+  if (pwForm.newPassword.length < 8) {
+    store.notify('新密码长度至少需要 8 位字符', 'error');
+    return;
+  }
   pwBusy.value = true;
   try {
     await api.changePassword(pwForm.currentPassword, pwForm.newPassword);
@@ -99,7 +125,11 @@ async function submitPassword() {
       </div>
     </div>
 
-    <EmptyState v-if="!store.user" icon="mdi-cog-outline" title="登录后管理账户设置" description="修改昵称、头像、时区与登录密码。">
+    <div v-if="store.loading" class="cp-loading-state">
+      <M3Loader :size="44" contained label="正在加载账户设置" />
+    </div>
+
+    <EmptyState v-else-if="!store.user" icon="mdi-cog-outline" title="登录后管理账户设置" description="修改昵称、头像、时区与登录密码。">
       <template #action>
         <v-btn color="primary" @click="store.openAuth('login')">立即登录</v-btn>
       </template>
@@ -148,7 +178,7 @@ async function submitPassword() {
               <v-text-field v-model="profile.name" label="显示昵称" required maxlength="60" />
             </v-col>
             <v-col cols="12" md="4">
-              <v-select v-model="profile.timezone" :items="commonTimezones" label="所在时区" />
+              <v-select v-model="profile.timezone" :items="timezoneItems" label="所在时区" />
             </v-col>
           </v-row>
           <div class="d-flex justify-end mt-4">
@@ -167,10 +197,22 @@ async function submitPassword() {
         <v-form @submit.prevent="submitPassword">
           <v-row density="compact" align="center">
             <v-col cols="12" md="5">
-              <v-text-field v-model="pwForm.currentPassword" label="当前密码" type="password" required />
+              <v-text-field
+                v-model="pwForm.currentPassword"
+                label="当前密码"
+                type="password"
+                autocomplete="current-password"
+                required
+              />
             </v-col>
             <v-col cols="12" md="5">
-              <v-text-field v-model="pwForm.newPassword" label="新密码（至少 8 位）" type="password" required />
+              <v-text-field
+                v-model="pwForm.newPassword"
+                label="新密码（至少 8 位）"
+                type="password"
+                autocomplete="new-password"
+                required
+              />
             </v-col>
             <v-col cols="12" md="2">
               <v-btn type="submit" variant="tonal" color="primary" block height="48" :loading="pwBusy">

@@ -1,9 +1,4 @@
 <script setup lang="ts">
-/**
- * M3 Expressive wavy linear progress (determinate).
- * Active indicator is a travelling wave; the remaining track is flat,
- * separated by a gap and closed with a stop indicator.
- */
 import { computed } from 'vue';
 
 const props = withDefaults(
@@ -13,8 +8,9 @@ const props = withDefaults(
     color?: string;
     trackColor?: string;
     label?: string;
+    animated?: boolean;
   }>(),
-  { max: 100, color: 'primary', trackColor: 'secondary-container', label: '' }
+  { max: 100, color: 'primary', trackColor: 'secondary-container', label: '', animated: false }
 );
 
 const pct = computed(() => {
@@ -26,6 +22,7 @@ const pct = computed(() => {
 <template>
   <div
     class="cp-wavy"
+    :class="{ 'is-full': pct >= 100, 'is-animated': animated }"
     role="progressbar"
     :aria-label="label || undefined"
     :aria-valuenow="value"
@@ -53,7 +50,6 @@ const pct = computed(() => {
 }
 .cp-wavy__active {
   flex: none;
-  /* leave room for the gap so the total length stays true to the value */
   width: max(10px, calc((100% - 6px) * var(--p) / 100));
   height: 12px;
   background: var(--c);
@@ -61,8 +57,13 @@ const pct = computed(() => {
     0 50% / 24px 12px repeat-x;
   mask: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 12'%3E%3Cpath d='M0 6 Q6 1.5 12 6 T24 6' fill='none' stroke='black' stroke-width='3.5' stroke-linecap='round'/%3E%3C/svg%3E")
     0 50% / 24px 12px repeat-x;
-  animation: cp-wave 1.6s linear infinite;
-  transition: width var(--cp-spring-slow, 0.6s ease);
+  transition: width var(--cp-motion-slow);
+}
+.cp-wavy.is-full .cp-wavy__active {
+  width: 100%;
+}
+.cp-wavy.is-animated .cp-wavy__active {
+  animation: cp-wave 1.8s linear infinite;
 }
 .cp-wavy__track {
   position: relative;
@@ -85,11 +86,6 @@ const pct = computed(() => {
   to {
     -webkit-mask-position: 24px 50%;
     mask-position: 24px 50%;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .cp-wavy__active {
-    animation: none;
   }
 }
 </style>
